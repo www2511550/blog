@@ -1,46 +1,50 @@
-<?php get_header();?>
-<div id="content" class="site-content sydb">	
-	<?php if (get_option('ygj_ddad') == '显示') { get_template_part('/inc/ad/ad_dhl'); } ?>
-	<div id="gensui">
-	<section id="primary" class="content-area">
-		<main id="main" class="site-main" role="main">
-		<?php if (get_option('ygj_hdpkg') && is_home()&&!is_paged()){ get_template_part ('/inc/slider');} ?>
-	<div id="post_list_box" class="border_gray">
-	<?php
-		$paged = get_query_var( 'paged' ) ? get_query_var( 'paged' ) : 1;
-		$sticky = get_option( 'sticky_posts' );
-		$args = array(
-			'cat' => get_option('ygj_new_exclude'),
-			'paged' => $paged
-		);
-		query_posts( $args );
- 	?>
-		<?php if ( have_posts() ) : ?>
-		<?php while ( have_posts() ) : the_post(); ?>
-		<article id="post-<?php the_ID(); ?>" class="archive-list">
-		<?php get_template_part( '/inc/content'); ?>
-		</article><!-- #post -->
- 	<!-- ad -->
-	<?php if ($wp_query->current_post == 1) : ?>
-	<?php if (get_option('ygj_adh') == '显示') { get_template_part('/inc/ad/ad_h'); } ?>
-	<?php endif; ?>	
-	<?php if ($wp_query->current_post == 5) : ?>
-	<?php if (get_option('ygj_adhx') == '显示') { get_template_part('/inc/ad/ad_hx'); } ?>
-	<?php endif; ?>	
-	<!-- end: ad -->
-<?php endwhile; ?>
-		<?php else : ?>
-		<section class="content">
-			<p>目前还没有文章！</p>
-			<p><a href="<?php echo get_option('siteurl'); ?>/wp-admin/post-new.php">点击这里发布您的第一篇文章</a></p>
-		</section>
-		<?php endif; ?>	
-</div>		
-		</main><!-- .site-main -->		
-		<?php pagenavi(); ?>
-	</section><!-- .content-area -->
-<?php get_sidebar();?>
-</div>
-<div class="clear"></div>
-</div><!-- .site-content -->
-<?php get_footer();?>
+<?php
+/**
+ *
+ *****************************************************************************************************
+ *    如果您通过浏览器访问网站时看到了这个提示，那么我们很遗憾地通知您，您的空间不支持 PHP 。
+ *    也就是说，您的空间可能是静态空间，或没有安装PHP，或没有为 Web 服务器打开 PHP 支持。
+ *    Sorry, PHP is not installed on your web hosting if you see this prompt.
+ *    Please check out the PHP configuration.
+ *
+ *    如您使用虚拟主机：
+ *
+ *        > 联系空间商，更换空间为支持 PHP 的空间。
+ *        > Contact your service provider, and let them provice a new service which supports PHP.
+ *
+ *
+ *    如您自行搭建服务器，推荐您：
+ *    Configuring manually? Recommend:
+ *
+ *        > 访问 PHP 官方网站获取安装帮助。
+ *        > Visit PHP Official Website to get the documentation of installion and configuration.
+ *        > http://php.net
+ *
+ ******************************************************************************************************
+ */
+
+/**
+ * Z-Blog with PHP
+ * @author
+ * @copyright (C) RainbowSoft Studio
+ * @version
+ */
+require 'zb_system/function/c_system_base.php';
+
+$zbp->RedirectInstall();
+$zbp->CheckGzip();
+$zbp->Load();
+$zbp->RedirectPermanentDomain();
+$zbp->CheckSiteClosed();
+
+foreach ($GLOBALS['hooks']['Filter_Plugin_Index_Begin'] as $fpname => &$fpsignal) {
+    $fpname();
+}
+
+ViewIndex();
+
+foreach ($GLOBALS['hooks']['Filter_Plugin_Index_End'] as $fpname => &$fpsignal) {
+    $fpname();
+}
+
+RunTime();

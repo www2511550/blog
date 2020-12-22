@@ -1,0 +1,136 @@
+[2018-05-13 20:08:54 .48388100 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: type',
+  3 => '/Applications/MAMP/htdocs/blog/zb_system/function/c_system_event.php',
+  4 => 675,
+)
+[2018-05-13 20:27:42 .44213700 +08:00]
+array (
+  0 => 'Error',
+  1 => 2048,
+  2 => 'Non-static method Dbpdo_MySQL::CreateDB() should not be called statically',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 10,
+)
+[2018-05-13 20:28:13 .41943900 +08:00]
+array (
+  0 => 'Shutdown',
+  1 => 1,
+  2 => 'Call to a member function query() on null',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 14,
+)
+[2018-05-13 20:28:28 .50365400 +08:00]
+array (
+  0 => 'Shutdown',
+  1 => 1,
+  2 => 'Call to a member function query() on null',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 14,
+)
+[2018-05-13 20:31:26 .90697100 +08:00]
+array (
+  0 => 'Shutdown',
+  1 => 1,
+  2 => 'Call to undefined method mysqli::affected_rows()',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 11,
+)
+[2018-05-13 20:45:42 .18368600 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: db',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 17,
+)
+[2018-05-13 20:45:43 .13546200 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: db',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 17,
+)
+[2018-05-13 20:46:14 .33892600 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: db',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 17,
+)
+[2018-05-13 20:46:26 .61546000 +08:00]
+array (
+  0 => 'Shutdown',
+  1 => 1,
+  2 => 'Call to a member function query() on null',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 17,
+)
+[2018-05-13 20:46:28 .29167700 +08:00]
+array (
+  0 => 'Shutdown',
+  1 => 1,
+  2 => 'Call to a member function query() on null',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 17,
+)
+[2018-05-13 20:46:52 .72919600 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: obj',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 19,
+)
+[2018-05-13 20:46:58 .27816000 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: obj',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 20,
+)
+[2018-05-13 20:51:25 .19321300 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined index: firstname',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 23,
+)
+[2018-05-13 20:58:04 .96525000 +08:00]
+array (
+  0 => 'Shutdown',
+  1 => 1,
+  2 => 'Using $this when not in object context',
+  3 => '/Applications/MAMP/htdocs/blog/addArticle.php',
+  4 => 34,
+)
+[2018-05-13 21:23:23 .12863200 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: commentRootFloor',
+  3 => '/Applications/MAMP/htdocs/blog/zb_users/cache/compiled/zbpNana/comment.php',
+  4 => 30,
+)
+[2018-05-13 21:23:24 .56858200 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: commentRootFloor',
+  3 => '/Applications/MAMP/htdocs/blog/zb_users/cache/compiled/zbpNana/comment.php',
+  4 => 30,
+)
+[2018-05-13 21:23:28 .92055200 +08:00]
+array (
+  0 => 'Error',
+  1 => 8,
+  2 => 'Undefined variable: commentRootFloor',
+  3 => '/Applications/MAMP/htdocs/blog/zb_users/cache/compiled/zbpNana/comment.php',
+  4 => 30,
+)
