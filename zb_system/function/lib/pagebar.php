@@ -1,12 +1,13 @@
 <?php
+
+if (!defined('ZBP_PATH')) {
+    exit('Access denied');
+}
 /**
  * 分页条码
- *
- * @package Z-BlogPHP
- * @subpackage ClassLib/PageBar 类库
  */
-class PageBar {
-
+class PageBar
+{
     /**
      * @var int|null 内容总数
      */
@@ -74,11 +75,14 @@ class PageBar {
 
     /**
      * @param $url
-     * @param bool $makereplace
+     * @param bool $makeReplace
+     * @param bool $isIndex
      */
-    public function __construct($url, $makereplace = true) {
+    public function __construct($url, $makeReplace = true, $isIndex = false)
+    {
         $this->UrlRule = new UrlRule($url);
-        $this->UrlRule->MakeReplace = $makereplace;
+        $this->UrlRule->MakeReplace = $makeReplace;
+        $this->UrlRule->IsIndex = $isIndex;
         $this->Buttons = &$this->buttons;
         $this->PrevButton = &$this->prevbutton;
         $this->NextButton = &$this->nextbutton;
@@ -86,12 +90,12 @@ class PageBar {
 
     /**
      * 构造分页条
-     * @return null
      */
-    public function Make() {
+    public function Make()
+    {
         global $zbp;
         if ($this->PageCount == 0) {
-            return null;
+            return;
         }
 
         $this->PageAll = ceil($this->Count / $this->PageCount);
@@ -99,40 +103,52 @@ class PageBar {
         $this->PageLast = $this->PageAll;
 
         $this->PagePrevious = $this->PageNow - 1;
-        if ($this->PagePrevious < 1) {$this->PagePrevious = 1;}
+        if ($this->PagePrevious < 1) {
+            $this->PagePrevious = 1;
+        }
 
         $this->PageNext = $this->PageNow + 1;
-        if ($this->PageNext > $this->PageAll) {$this->PageNext = $this->PageAll;}
+        if ($this->PageNext > $this->PageAll) {
+            $this->PageNext = $this->PageAll;
+        }
 
         $this->UrlRule->Rules['{%page%}'] = $this->PageFirst;
-        $this->buttons['‹‹'] = $this->UrlRule->Make();
+        $this->buttons[$zbp->langs->msg->first_button] = $this->UrlRule->Make();
 
         if ($this->PageNow != $this->PageFirst) {
             $this->UrlRule->Rules['{%page%}'] = $this->PagePrevious;
-            $this->buttons['‹'] = $this->UrlRule->Make();
-            $this->prevbutton = $this->buttons['‹'];
+            $this->buttons[$zbp->langs->msg->prev_button] = $this->UrlRule->Make();
+            $this->prevbutton = $this->buttons[$zbp->langs->msg->prev_button];
         }
 
-        $j = $this->PageNow;
-        if ($j + $this->PageBarCount > $this->PageAll) {
-            $j = $this->PageAll - $this->PageBarCount + 1;
+        $pageAll = $this->PageAll + 1;
+        $middle = ceil($this->PageBarCount / 2);
+        $start = 1;
+        if ($this->PageNow > $middle) {
+            $start = $this->PageNow - $middle + 1;
         }
-        if ($j < 1) {$j = 1;}
+        if ($pageAll > $this->PageBarCount && ($pageAll - $start) < $this->PageBarCount) {
+            $start = $pageAll - $this->PageBarCount;
+        }
+        $end = $start + $this->PageBarCount;
+        if ($end > $pageAll) {
+            $end = $pageAll;
+        }
 
-        for ($i = $j; $i < $j + $this->PageBarCount; $i++) {
-            if ($i > $this->PageAll) {break;}
+        $j = trim($zbp->langs->msg->numeral_button);
+        $j = ($j == '') ? '%num%' : $j;
+        for ($i = $start; $i < $end; $i++) {
             $this->UrlRule->Rules['{%page%}'] = $i;
-            $this->buttons[$i] = $this->UrlRule->Make();
+            $this->buttons[str_ireplace('%num%', $i, $j)] = $this->UrlRule->Make();
         }
+
         if ($this->PageNow != $this->PageNext) {
             $this->UrlRule->Rules['{%page%}'] = $this->PageNext;
-            $this->buttons['›'] = $this->UrlRule->Make();
-            $this->nextbutton = $this->buttons['›'];
+            $this->buttons[$zbp->langs->msg->next_button] = $this->UrlRule->Make();
+            $this->nextbutton = $this->buttons[$zbp->langs->msg->next_button];
         }
 
         $this->UrlRule->Rules['{%page%}'] = $this->PageLast;
-        $this->buttons['››'] = $this->UrlRule->Make();
-
+        $this->buttons[$zbp->langs->msg->last_button] = $this->UrlRule->Make();
     }
-
 }

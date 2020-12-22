@@ -1,13 +1,15 @@
 <?php
+
 return 'conhxw';
-function conhxw(&$content) {
+function conhxw(&$content)
+{
 
     //全角转半角（可能和下面放一起更合适吧）
     $str_sbc = 'ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ１２３４５６７８９０ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ［］；＇／．，＜＞？＂：｜＋＿＼＝－）（＊＆＾％＄＠！￣';
     $str_ori = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyz[];\'/.,<>?":|+_\=-)(*&^%$@!~';
 
     for ($i = 0; $i < strlen($str_sbc); $i += 3) {
-        $content = str_replace($str_sbc{$i} . $str_sbc{$i + 1} . $str_sbc{$i + 2}, $str_ori{$i / 3}, $content);
+        $content = str_replace($str_sbc[$i] . $str_sbc[$i + 1] . $str_sbc[$i + 2], $str_ori[$i / 3], $content);
     }
 
     //转换数字时同时转换火星文
@@ -20,5 +22,4 @@ function conhxw(&$content) {
 
     //替换HTML编码字符
     $content = html_entity_decode($content, ENT_QUOTES);
-
-};
+}

@@ -1,67 +1,85 @@
 <?php
-/**
- * 事件相关函数
- * @package Z-BlogPHP
- * @subpackage System\Event 操作事件
+
+if (!defined('ZBP_PATH')) {
+    exit('Access denied');
+}
+/** 
+ * 事件相关函数.
+ *
  * @copyright (C) RainbowSoft Studio
  */
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 验证登录
+ * 验证登录.
+ *
+ * @param bool $throwException
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function VerifyLogin() {
+function VerifyLogin($throwException = true)
+{
     global $zbp;
+    /** @var Member $m */
     $m = null;
-    $u = trim(GetVars('username', 'POST'));
-    $p = trim(GetVars('password', 'POST'));
-    if ($zbp->Verify_MD5(GetVars('username', 'POST'), GetVars('password', 'POST'), $m)) {
+    if ($zbp->Verify_MD5(trim(GetVars('username', 'POST')), trim(GetVars('password', 'POST')), $m)) {
+
         $zbp->user = $m;
-        $un = $m->Name;
-        $ps = $zbp->VerifyResult($m);
-        $sd = (int) GetVars('savedate');
-        $addinfo = array();
-        $addinfo['chkadmin'] = (int) $zbp->CheckRights('admin');
-        $addinfo['chkarticle'] = (int) $zbp->CheckRights('ArticleEdt');
-        $addinfo['levelname'] = $m->LevelName;
-        $addinfo['userid'] = $m->ID;
-        $addinfo['useralias'] = $m->StaticName;
-
-        if ($sd == 0)
-            $sdt = 0;
-        else
-            $sdt = time() + 3600 * 24 * $sd;
-
-        if(HTTP_SCHEME == 'https://'){
-            setcookie("username", $un, $sdt, $zbp->cookiespath, '', true, false);
-            setcookie("password", $ps, $sdt, $zbp->cookiespath, '', true, true);
-            setcookie("addinfo" . str_replace('/', '', $zbp->cookiespath), json_encode($addinfo), $sdt, $zbp->cookiespath, '', true, false);
-
-        }else{
-            setcookie("username", $un, $sdt, $zbp->cookiespath);
-            setcookie("password", $ps, $sdt, $zbp->cookiespath);
-            setcookie("addinfo" . str_replace('/', '', $zbp->cookiespath), json_encode($addinfo), $sdt, $zbp->cookiespath);
-        }
+        $sd = (float) GetVars('savedate');
+        $sd = ($sd < 1) ? 1 : $sd; // must >= 1 day
+        $sdt = time() + 3600 * 24 * $sd;
+        SetLoginCookie($m, (int) $sdt);
 
         foreach ($GLOBALS['hooks']['Filter_Plugin_VerifyLogin_Succeed'] as $fpname => &$fpsignal) {
             $fpname();
         }
 
         return true;
-    } else {
+    } elseif ($throwException) {
         $zbp->ShowError(8, __FILE__, __LINE__);
+    } else {
+        return false;
     }
 }
 
 /**
- * 注销登录
+ * 设置登录Cookie，直接登录该用户.
+ *
+ * @param Member $user
+ * @param int    $cookieTime
+ *
+ * @return bool
  */
-function Logout() {
+function SetLoginCookie($user, $cookieTime)
+{
+    global $zbp;
+    $addinfo = array();
+    $addinfo['chkadmin'] = (int) $zbp->CheckRights('admin');
+    $addinfo['chkarticle'] = (int) $zbp->CheckRights('ArticleEdt');
+    $addinfo['levelname'] = $user->LevelName;
+    $addinfo['userid'] = $user->ID;
+    $addinfo['useralias'] = $user->StaticName;
+    $token = $zbp->GenerateUserToken($user, $cookieTime);
+    $secure = HTTP_SCHEME == 'https://';
+    setcookie("username", $user->Name, $cookieTime, $zbp->cookiespath, '', $secure, false);
+    setcookie("token", $token, $cookieTime, $zbp->cookiespath, '', $secure, true);
+    setcookie("addinfo" . str_replace('/', '', $zbp->cookiespath), json_encode($addinfo), $cookieTime, $zbp->cookiespath, '', $secure, false);
+
+    return true;
+}
+
+/**
+ * 注销登录.
+ */
+function Logout()
+{
     global $zbp;
 
     setcookie('username', '', time() - 3600, $zbp->cookiespath);
     setcookie('password', '', time() - 3600, $zbp->cookiespath);
+    setcookie('token', '', time() - 3600, $zbp->cookiespath);
     setcookie("addinfo" . str_replace('/', '', $zbp->cookiespath), '', time() - 3600, $zbp->cookiespath);
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_Logout_Succeed'] as $fpname => &$fpsignal) {
@@ -69,14 +87,17 @@ function Logout() {
     }
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 获取文章
- * @param mixed $idorname 文章id 或 名称、别名
+ * 获取文章.
+ *
+ * @param mixed $idorname    文章id 或 名称、别名
  * @param array $option|null
+ *
  * @return Post
  */
-function GetPost($idorname, $option = null) {
+function GetPost($idorname, $option = null)
+{
     global $zbp;
     $post = null;
 
@@ -101,12 +122,11 @@ function GetPost($idorname, $option = null) {
         }
         $articles = $zbp->GetPostList('*', $w, null, 1, null);
         if (count($articles) == 0) {
-            $post = new Post;
+            $post = new Post();
         } else {
             $post = $articles[0];
         }
-
-    } elseif (is_integer($idorname)) {
+    } elseif (is_int($idorname)) {
         $post = $zbp->GetPostByID($idorname);
     }
 
@@ -118,17 +138,20 @@ function GetPost($idorname, $option = null) {
 }
 
 /**
- * 获取文章列表
- * @param int $count 数量
- * @param null $cate 分类ID
- * @param null $auth 用户ID
- * @param null $date 日期
- * @param null $tags 标签
+ * 获取文章列表.
+ *
+ * @param int  $count  数量
+ * @param null $cate   分类ID
+ * @param null $auth   用户ID
+ * @param null $date   日期
+ * @param null $tags   标签
  * @param null $search 搜索关键词
  * @param null $option
+ *
  * @return array|mixed
  */
-function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = null, $search = null, $option = null) {
+function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = null, $search = null, $option = null)
+{
     global $zbp;
     $list = array();
 
@@ -165,7 +188,7 @@ function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = 
     $w = array();
 
     if ($option['only_ontop'] == true) {
-        $w[] = array('=', 'log_IsTop', 1);
+        $w[] = array('>', 'log_IsTop', 0);
     } elseif ($option['only_not_ontop'] == true) {
         $w[] = array('=', 'log_IsTop', 0);
     }
@@ -173,30 +196,29 @@ function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = 
     $w[] = array('=', 'log_Status', 0);
 
     if (!is_null($cate)) {
-        $category = new Category;
+        $category = new Category();
         $category = $zbp->GetCategoryByID($cate);
 
         if ($category->ID > 0) {
-
             if (!$option['has_subcate']) {
                 $w[] = array('=', 'log_CateID', $category->ID);
             } else {
                 $arysubcate = array();
                 $arysubcate[] = array('log_CateID', $category->ID);
-                foreach ($zbp->categories[$category->ID]->ChildrenCategories as $subcate) {
-                    $arysubcate[] = array('log_CateID', $subcate->ID);
+                if (isset($zbp->categories[$category->ID])) {
+                    foreach ($zbp->categories[$category->ID]->ChildrenCategories as $subcate) {
+                        $arysubcate[] = array('log_CateID', $subcate->ID);
+                    }
                 }
                 $w[] = array('array', $arysubcate);
-
             }
-
         } else {
             return array();
         }
     }
 
     if (!is_null($auth)) {
-        $author = new Member;
+        $author = new Member();
         $author = $zbp->GetMemberByID($auth);
 
         if ($author->ID > 0) {
@@ -217,7 +239,7 @@ function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = 
     }
 
     if (!is_null($tags)) {
-        $tag = new Tag;
+        $tag = new Tag();
         if (is_array($tags)) {
             $ta = array();
             foreach ($tags as $t) {
@@ -262,7 +284,6 @@ function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = 
             if ($a->ID == $option['is_related']) {
                 unset($list[$k]);
             }
-
         }
         if (count($list) == $count) {
             array_pop($list);
@@ -274,20 +295,47 @@ function GetList($count = 10, $cate = null, $auth = null, $date = null, $tags = 
     }
 
     return $list;
-
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * ViewIndex,首页，搜索页，feed页的主函数
+ * ViewIndex,首页，搜索页，feed页的主函数.
+ *
  * @api Filter_Plugin_ViewIndex_Begin
+ *
+ * @throws Exception
+ *
  * @return mixed
  */
-function ViewIndex() {
+function ViewIndex()
+{
     global $zbp, $action;
 
+    if ($zbp->template->hasTemplate('404')) {
+        Add_Filter_Plugin('Filter_Plugin_Zbp_ShowError', 'Include_ShowError404');
+    }
+
+    if (IS_IIS && isset($_GET['rewrite']) && isset($_GET['full_uri'])) {
+        //对iis + rewrite进行修正
+        $uri_array = parse_url($_GET['full_uri']);
+        if (isset($uri_array['query'])) {
+            parse_str($uri_array['query'], $uri_query);
+            $_GET = array_merge($_GET, $uri_query);
+            $_REQUEST = array_merge($_REQUEST, $uri_query);
+        }
+        unset($uri_array, $uri_query);
+    }
+
+    if ($zbp->option['ZC_ADDITIONAL_SECURITY']) {
+        header('X-XSS-Protection: 1; mode=block');
+        if ($zbp->isHttps) {
+            header('Upgrade-Insecure-Requests: 1');
+        }
+    }
+
+    $url = $zbp->currenturl;
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewIndex_Begin'] as $fpname => &$fpsignal) {
-        $fpreturn = $fpname();
+        $fpreturn = $fpname($url);
         if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
             $fpsignal = PLUGIN_EXITSIGNAL_NONE;
 
@@ -295,40 +343,38 @@ function ViewIndex() {
         }
     }
 
-    if ($zbp->template->hasTemplate('404')) {
-         Add_Filter_Plugin('Filter_Plugin_Zbp_ShowError', 'Include_ShowError404');
+    switch ($action) {
+        case 'feed':
+            ViewFeed();
+            break;
+        case 'search':
+            ViewSearch();
+            break;
+        case '':
+        default:
+            if ($url == $zbp->cookiespath || $url == $zbp->cookiespath . 'index.php') {
+                ViewList(null, null, null, null, null);
+            } elseif (($zbp->option['ZC_STATIC_MODE'] == 'ACTIVE' || isset($_GET['rewrite'])) &&
+            (isset($_GET['id']) || isset($_GET['alias']))) {
+                ViewPost(GetVars('id', 'GET'), GetVars('alias', 'GET'));
+            } elseif (($zbp->option['ZC_STATIC_MODE'] == 'ACTIVE' || isset($_GET['rewrite'])) &&
+                (isset($_GET['page']) || isset($_GET['cate']) || isset($_GET['auth']) || isset($_GET['date']) || isset($_GET['tags']))) {
+                ViewList(GetVars('page', 'GET'), GetVars('cate', 'GET'), GetVars('auth', 'GET'), GetVars('date', 'GET'), GetVars('tags', 'GET'));
+            } else {
+                ViewAuto($url);
+            }
     }
 
-    switch ($action) {
-    case 'feed':
-        ViewFeed();
-        break;
-    case 'search':
-        ViewSearch();
-        break;
-    case '':
-    default:
-        if ($zbp->currenturl == $zbp->cookiespath ||
-            $zbp->currenturl == $zbp->cookiespath . 'index.php') {
-            ViewList(null, null, null, null, null);
-        } elseif (($zbp->option['ZC_STATIC_MODE'] == 'ACTIVE' || isset($_GET['rewrite'])) &&
-            (isset($_GET['id']) || isset($_GET['alias']))) {
-            ViewPost(GetVars('id', 'GET'), GetVars('alias', 'GET'));
-        } elseif (($zbp->option['ZC_STATIC_MODE'] == 'ACTIVE' || isset($_GET['rewrite'])) &&
-            (isset($_GET['page']) || isset($_GET['cate']) || isset($_GET['auth']) || isset($_GET['date']) || isset($_GET['tags']))) {
-            ViewList(GetVars('page', 'GET'), GetVars('cate', 'GET'), GetVars('auth', 'GET'), GetVars('date', 'GET'), GetVars('tags', 'GET'));
-        } else {
-            ViewAuto($zbp->currenturl);
-        }
-    }
+    return false;
 }
 
 /**
- * 显示RSS2Feed
+ * 显示RSS2Feed.
+ *
  * @api Filter_Plugin_ViewFeed_Begin
- * @return mixed
  */
-function ViewFeed() {
+function ViewFeed()
+{
     global $zbp;
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewFeed_Begin'] as $fpname => &$fpsignal) {
@@ -340,11 +386,30 @@ function ViewFeed() {
         }
     }
 
-    if (!$zbp->CheckRights($GLOBALS['action'])) {Http404();die;}
+    if (!$zbp->CheckRights($GLOBALS['action'])) {
+        Http404();
+        die;
+    }
 
     $rss2 = new Rss2($zbp->name, $zbp->host, $zbp->subname);
 
     $w = array(array('=', 'log_Status', 0));
+
+    if (GetVars('cate', 'GET') != null) {
+        $w[] = array('=', 'log_CateID', (int) GetVars('cate', 'GET'));
+    } elseif (GetVars('auth', 'GET') != null) {
+        $w[] = array('=', 'log_AuthorID', (int) GetVars('auth', 'GET'));
+    } elseif (GetVars('date', 'GET') != null) {
+        $da = date_parse(GetVars('date', 'GET'));
+        $d = strtotime(GetVars('date', 'GET'));
+        if (strrpos(GetVars('date', 'GET'), '-') !== strpos(GetVars('date', 'GET'), '-')) {
+            $w[] = array('BETWEEN', 'log_PostTime', $d, strtotime('+1 day', $d));
+        } else {
+            $w[] = array('BETWEEN', 'log_PostTime', $d, strtotime('+1 month', $d));
+        }
+    } elseif (GetVars('tags', 'GET') != null) {
+        $w[] = array('LIKE', 'log_Tag', '%{' . (int) GetVars('tags', 'GET') . '}%');
+    }
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewFeed_Core'] as $fpname => &$fpsignal) {
         $fpname($w);
@@ -362,19 +427,34 @@ function ViewFeed() {
         $rss2->addItem($article->Title, $article->Url, ($zbp->option['ZC_RSS_EXPORT_WHOLE'] == true ? $article->Content : $article->Intro), $article->PostTime);
     }
 
+    foreach ($GLOBALS['hooks']['Filter_Plugin_ViewFeed_End'] as $fpname => &$fpsignal) {
+        $fpreturn = $fpname($rss2);
+        if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
+            $fpsignal = PLUGIN_EXITSIGNAL_NONE;
+
+            return $fpreturn;
+        }
+    }
+
     header("Content-type:text/xml; Charset=utf-8");
 
     echo $rss2->saveXML();
 
+    return true;
 }
 
 /**
- * 展示搜索结果
+ * 展示搜索结果.
+ *
  * @api Filter_Plugin_ViewSearch_Begin
  * @api Filter_Plugin_ViewPost_Template
+ *
+ * @throws Exception
+ *
  * @return mixed
  */
-function ViewSearch() {
+function ViewSearch()
+{
     global $zbp;
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewSearch_Begin'] as $fpname => &$fpsignal) {
@@ -386,15 +466,17 @@ function ViewSearch() {
         }
     }
 
-    if (!$zbp->CheckRights($GLOBALS['action'])) {Redirect('./');}
+    if (!$zbp->CheckRights($GLOBALS['action'])) {
+        Redirect('./');
+    }
 
     $q = trim(htmlspecialchars(GetVars('q', 'GET')));
     $page = GetVars('page', 'GET');
     $page = (int) $page == 0 ? 1 : (int) $page;
 
-    $article = new Post;
+    $article = new Post();
     $article->ID = 0;
-    $article->Title = $zbp->lang['msg']['search'] . ' &quot;' . $q . '&quot;';
+    $article->Title = $zbp->langs->msg->search . '&nbsp;&quot;<span>' . $q . '</span>&quot;';
     $article->IsLock = true;
     $article->Type = ZC_POST_TYPE_PAGE;
 
@@ -420,23 +502,28 @@ function ViewSearch() {
     $pagebar->PageBarCount = $zbp->pagebarcount;
     $pagebar->UrlRule->Rules['{%page%}'] = $page;
     $pagebar->UrlRule->Rules['{%q%}'] = rawurlencode($q);
+    $order = array('log_PostTime' => 'DESC');
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewSearch_Core'] as $fpname => &$fpsignal) {
-        $fpname($q, $page, $w, $pagebar);
+        $fpname($q, $page, $w, $pagebar, $order);
     }
 
     $array = $zbp->GetArticleList(
         '',
         $w,
-        array('log_PostTime' => 'DESC'),
+        $order,
         array(($pagebar->PageNow - 1) * $pagebar->PageCount, $pagebar->PageCount),
         array('pagebar' => $pagebar),
         false
     );
 
+    $results = array();
+
     foreach ($array as $a) {
+        $r = new Post();
+        $r->LoadInfoByDataArray($a->GetData());
         $article->Content .= '<p><a href="' . $a->Url . '">' . str_replace($q, '<strong>' . $q . '</strong>', $a->Title) . '</a><br/>';
-        $s = strip_tags($a->Intro) . '' . strip_tags($a->Content);
+        $s = strip_tags($a->Intro) . ' ' . strip_tags($a->Content);
         $i = strpos($s, $q, 0);
         if ($i !== false) {
             if ($i > 50) {
@@ -445,42 +532,56 @@ function ViewSearch() {
                 $t = SubStrUTF8_Start($s, 0, 100);
             }
             $article->Content .= str_replace($q, '<strong>' . $q . '</strong>', $t) . '<br/>';
+            $r->Intro = str_replace($q, '<strong>' . $q . '</strong>', $t);
+            $r->Content = $a->Content;
+        } else {
+            $s = strip_tags($a->Title);
+            $i = strpos($s, $q, 0);
+            if ($i > 50) {
+                $t = SubStrUTF8_Start($s, $i - 50, 100);
+            } else {
+                $t = SubStrUTF8_Start($s, 0, 100);
+            }
+            $article->Content .= str_replace($q, '<strong>' . $q . '</strong>', $t) . '<br/>';
+            $r->Intro = str_replace($q, '<strong>' . $q . '</strong>', $t);
+            $r->Content = $a->Content;
         }
+        $r->Title = str_replace($q, '<strong>' . $q . '</strong>', $r->Title);
         $article->Content .= '<a href="' . $a->Url . '">' . $a->Url . '</a><br/></p>';
+        $results[] = $r;
     }
 
+    $r0 = new Post();
+    $r0->ID = 0;
+    $r0->Title = $zbp->lang['msg']['search'] . ' &quot;' . $q . '&quot;';
+    $r0->Type = ZC_POST_TYPE_ARTICLE;
+    $results = $results;
+
     $zbp->header .= '<meta name="robots" content="noindex,follow" />' . "\r\n";
-    $zbp->template->SetTags('title', $article->Title);
+    $zbp->template->SetTags('title', str_replace(array('<span>', '</span>'), '', $article->Title));
     $zbp->template->SetTags('article', $article);
     $zbp->template->SetTags('search', $q);
-    $zbp->template->SetTags('articles', $array);
-    $zbp->template->SetTags('type', $article->TypeName);
     $zbp->template->SetTags('page', $page);
     $zbp->template->SetTags('pagebar', $pagebar);
     $zbp->template->SetTags('comments', array());
-    $zbp->template->SetTemplate($article->Template);
+    $zbp->template->SetTags('issearch', true);
 
-    foreach ($GLOBALS['hooks']['Filter_Plugin_ViewPost_Template'] as $fpname => &$fpsignal) {
-        $fpreturn = $fpname($zbp->template);
+    //1.6新加设置，可以让搜索变为列表模式运行
+    $zbp->template->SetTags('type', 'search'); //1.6统一改为search
+    if (isset($zbp->option['ZC_SEARCH_TYPE']) && $zbp->option['ZC_SEARCH_TYPE'] == 'list') {
+        $zbp->template->SetTags('articles', $results);
+        if ($zbp->template->hasTemplate('search')) {
+            $zbp->template->SetTemplate('search');
+        } else {
+            $zbp->template->SetTemplate('index');
+        }
+    } else {
+        $zbp->template->SetTags('articles', $array);
+        $zbp->template->SetTemplate($article->Template);
     }
 
-    $zbp->template->Display();
-
-}
-
-################################################################################################################
-/**
- * 根据Rewrite_url规则显示页面
- * @api Filter_Plugin_ViewAuto_Begin
- * @api Filter_Plugin_ViewAuto_End
- * @param string $inpurl 页面url
- * @return null|string
- */
-function ViewAuto($inpurl) {
-    global $zbp;
-
-    foreach ($GLOBALS['hooks']['Filter_Plugin_ViewAuto_Begin'] as $fpname => &$fpsignal) {
-        $fpreturn = $fpname($inpurl);
+    foreach ($GLOBALS['hooks']['Filter_Plugin_ViewSearch_Template'] as $fpname => &$fpsignal) {
+        $fpreturn = $fpname($zbp->template);
         if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
             $fpsignal = PLUGIN_EXITSIGNAL_NONE;
 
@@ -488,37 +589,67 @@ function ViewAuto($inpurl) {
         }
     }
 
+    $zbp->template->Display();
+
+    return true;
+}
+
+//###############################################################################################################
+/**
+ * 根据Rewrite_url规则显示页面.
+ *
+ * @api Filter_Plugin_ViewAuto_Begin
+ * @api Filter_Plugin_ViewAuto_End
+ *
+ * @param string $inpurl 页面url
+ *
+ * @throws Exception
+ *
+ * @return null|string
+ */
+function ViewAuto($inpurl)
+{
+    global $zbp;
+
     $url = GetValueInArray(explode('?', $inpurl), '0');
 
     if ($zbp->cookiespath === substr($url, 0, strlen($zbp->cookiespath))) {
         $url = substr($url, strlen($zbp->cookiespath));
     }
 
+    foreach ($GLOBALS['hooks']['Filter_Plugin_ViewAuto_Begin'] as $fpname => &$fpsignal) {
+        $fpreturn = $fpname($inpurl, $url);
+        if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
+            $fpsignal = PLUGIN_EXITSIGNAL_NONE;
+
+            return $fpreturn;
+        }
+    }
+
     if (IS_IIS && isset($_GET['rewrite'])) {
         //iis+httpd.ini下如果存在真实文件
         $realurl = $zbp->path . urldecode($url);
-        if (is_readable($realurl) && is_file($realurl)) {
+        if (is_readable($realurl) && is_file($realurl) && !preg_match('/\.php$/', $realurl)) {
             die(file_get_contents($realurl));
         }
         unset($realurl);
     }
 
-    $url = trim(urldecode($url), '/');
+    $url = urldecode($url);
 
-    if ($url == '' || $url == 'index.php') {
+    if ($url == '' || $url == '/' || $url == 'index.php') {
         ViewList(null, null, null, null, null);
 
-        return null;
+        return;
     }
 
     if ($zbp->option['ZC_STATIC_MODE'] == 'REWRITE') {
-
         $r = UrlRule::OutputUrlRegEx($zbp->option['ZC_INDEX_REGEX'], 'index');
         $m = array();
         if (preg_match($r, $url, $m) == 1) {
             ViewList($m['page'], null, null, null, null, true);
 
-            return null;
+            return;
         }
 
         $r = UrlRule::OutputUrlRegEx($zbp->option['ZC_DATE_REGEX'], 'date', false);
@@ -527,7 +658,7 @@ function ViewAuto($inpurl) {
             isset($m['page']) ? null : $m['page'] = 0;
             $result = ViewList($m['page'], null, null, $m, null, true);
             if ($result == true) {
-                return null;
+                return;
             }
         }
 
@@ -536,7 +667,7 @@ function ViewAuto($inpurl) {
         if (preg_match($r, $url, $m) == 1) {
             $result = ViewList($m['page'], null, null, $m, null, true);
             if ($result == true) {
-                return null;
+                return;
             }
         }
 
@@ -546,7 +677,7 @@ function ViewAuto($inpurl) {
             isset($m['page']) ? null : $m['page'] = 0;
             $result = ViewList($m['page'], null, $m, null, null, true);
             if ($result == true) {
-                return null;
+                return;
             }
         }
 
@@ -555,7 +686,7 @@ function ViewAuto($inpurl) {
         if (preg_match($r, $url, $m) == 1) {
             $result = ViewList($m['page'], null, $m, null, null, true);
             if ($result == true) {
-                return null;
+                return;
             }
         }
 
@@ -565,7 +696,7 @@ function ViewAuto($inpurl) {
             isset($m['page']) ? null : $m['page'] = 0;
             $result = ViewList($m['page'], null, null, null, $m, true);
             if ($result == true) {
-                return null;
+                return;
             }
         }
 
@@ -574,7 +705,7 @@ function ViewAuto($inpurl) {
         if (preg_match($r, $url, $m) == 1) {
             $result = ViewList($m['page'], null, null, null, $m, true);
             if ($result == true) {
-                return null;
+                return;
             }
         }
 
@@ -584,9 +715,8 @@ function ViewAuto($inpurl) {
             isset($m['page']) ? null : $m['page'] = 0;
             $result = ViewList($m['page'], $m, null, null, null, true);
             if ($result == true) {
-                return null;
+                return;
             }
-
         }
 
         $r = UrlRule::OutputUrlRegEx($zbp->option['ZC_CATEGORY_REGEX'], 'cate', true);
@@ -594,9 +724,8 @@ function ViewAuto($inpurl) {
         if (preg_match($r, $url, $m) == 1) {
             $result = ViewList($m['page'], $m, null, null, null, true);
             if ($result == true) {
-                return null;
+                return;
             }
-
         }
 
         $r = UrlRule::OutputUrlRegEx($zbp->option['ZC_ARTICLE_REGEX'], 'article');
@@ -607,7 +736,7 @@ function ViewAuto($inpurl) {
                 $zbp->ShowError(2, __FILE__, __LINE__);
             }
 
-            return null;
+            return;
         }
 
         $r = UrlRule::OutputUrlRegEx($zbp->option['ZC_PAGE_REGEX'], 'page');
@@ -618,9 +747,8 @@ function ViewAuto($inpurl) {
                 $zbp->ShowError(2, __FILE__, __LINE__);
             }
 
-            return null;
+            return;
         }
-
     }
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewAuto_End'] as $fpname => &$fpsignal) {
@@ -636,36 +764,43 @@ function ViewAuto($inpurl) {
         if (isset($_GET['id']) || isset($_GET['alias'])) {
             ViewPost(GetVars('id', 'GET'), GetVars('alias', 'GET'));
 
-            return null;
+            return;
         } elseif (isset($_GET['page']) || isset($_GET['cate']) || isset($_GET['auth']) || isset($_GET['date']) || isset($_GET['tags'])) {
             ViewList(GetVars('page', 'GET'), GetVars('cate', 'GET'), GetVars('auth', 'GET'), GetVars('date', 'GET'), GetVars('tags', 'GET'));
 
-            return null;
+            return;
         }
     }
 
     $zbp->ShowError(2, __FILE__, __LINE__);
 
+    return false;
 }
 
 /**
- * 显示列表页面
+ * 显示列表页面.
+ *
  * @api Filter_Plugin_ViewList_Begin
  * @api Filter_Plugin_ViewList_Template
- * @param int $page
- * @param int|string $cate
- * @param int|string $auth
- * @param string   $date
- * @param string $tags tags列表
- * @param bool $isrewrite 是否启用urlrewrite
+ *
+ * @param int   $page
+ * @param mixed $cate
+ * @param mixed $auth
+ * @param mixed $date
+ * @param mixed $tags      tags列表
+ * @param bool  $isrewrite 是否启用urlrewrite
+ *
+ * @throws Exception
+ *
  * @return string
  */
-function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
+function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false)
+{
     global $zbp;
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewList_Begin'] as $fpname => &$fpsignal) {
         $fpargs = func_get_args();
-        $fpreturn = call_user_func_array( $fpname, $fpargs );
+        $fpreturn = call_user_func_array($fpname, $fpargs);
         if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
             $fpsignal = PLUGIN_EXITSIGNAL_NONE;
 
@@ -705,194 +840,198 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
     $articles_top = array();
 
     switch ($type) {
-    ########################################################################################################
-    case 'index':
-        $pagebar = new Pagebar($zbp->option['ZC_INDEX_REGEX']);
-        $pagebar->Count = $zbp->cache->normal_article_nums;
-        $template = $zbp->option['ZC_INDEX_DEFAULT_TEMPLATE'];
-        if ($page == 1) {
-            $zbp->title = $zbp->subname;
-        } else {
-            $zbp->title = str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
-        }
-        break;
-    ########################################################################################################
-    case 'category':
-        $pagebar = new Pagebar($zbp->option['ZC_CATEGORY_REGEX']);
-        $category = new Category;
-
-        if (!is_array($cate)) {
-            $cateId = $cate;
-            $cate = array();
-            if (strpos($zbp->option['ZC_CATEGORY_REGEX'], '{%id%}') !== false) {
-                $cate['id'] = $cateId;
+    //#######################################################################################################
+        case 'index':
+            $pagebar = new Pagebar($zbp->option['ZC_INDEX_REGEX'], true, true);
+            $pagebar->Count = $zbp->cache->normal_article_nums;
+            $template = $zbp->option['ZC_INDEX_DEFAULT_TEMPLATE'];
+            if ($page == 1) {
+                $zbp->title = $zbp->subname;
+            } else {
+                $zbp->title = str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
             }
-            if (strpos($zbp->option['ZC_CATEGORY_REGEX'], '{%alias%}') !== false) {
-                $cate['alias'] = $cateId;
-            }
-        }
-        if (isset($cate['id'])) {
-            $category = $zbp->GetCategoryByID($cate['id']);
-        } else {
-            $category = $zbp->GetCategoryByAlias($cate['alias']);
-        }
+            break;
+    //#######################################################################################################
+        case 'category':
+            $pagebar = new Pagebar($zbp->option['ZC_CATEGORY_REGEX']);
+            $category = new Category();
 
-        if ($category->ID == 0) {
-            if ($isrewrite == true) {
+            if (!is_array($cate)) {
+                $cateId = $cate;
+                $cate = array();
+                if (strpos($zbp->option['ZC_CATEGORY_REGEX'], '{%id%}') !== false) {
+                    $cate['id'] = $cateId;
+                }
+                if (strpos($zbp->option['ZC_CATEGORY_REGEX'], '{%alias%}') !== false) {
+                    $cate['alias'] = $cateId;
+                }
+            }
+            if (isset($cate['id'])) {
+                $category = $zbp->GetCategoryByID($cate['id']);
+            } else {
+                $category = $zbp->GetCategoryByAlias($cate['alias']);
+            }
+
+            if ($category->ID == '') {
+                if ($isrewrite == true) {
+                    return false;
+                }
+
+                $zbp->ShowError(2, __FILE__, __LINE__);
+            }
+            if ($page == 1) {
+                $zbp->title = $category->Name;
+            } else {
+                $zbp->title = $category->Name . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
+            }
+                $template = $category->Template;
+
+            if (!$zbp->option['ZC_DISPLAY_SUBCATEGORYS']) {
+                $w[] = array('=', 'log_CateID', $category->ID);
+                $pagebar->Count = $category->Count;
+            } else {
+                $arysubcate = array();
+                $arysubcate[] = array('log_CateID', $category->ID);
+                foreach ($zbp->categories[$category->ID]->ChildrenCategories as $subcate) {
+                    $arysubcate[] = array('log_CateID', $subcate->ID);
+                }
+                $w[] = array('array', $arysubcate);
+            }
+
+                $pagebar->UrlRule->Rules['{%id%}'] = $category->ID;
+                $pagebar->UrlRule->Rules['{%alias%}'] = $category->Alias == '' ? rawurlencode($category->Name) : $category->Alias;
+            break;
+    //#######################################################################################################
+        case 'author':
+            $pagebar = new Pagebar($zbp->option['ZC_AUTHOR_REGEX']);
+            $author = new Member();
+
+            if (!is_array($auth)) {
+                $authId = $auth;
+                $auth = array();
+                if (strpos($zbp->option['ZC_AUTHOR_REGEX'], '{%id%}') !== false) {
+                    $auth['id'] = $authId;
+                }
+                if (strpos($zbp->option['ZC_AUTHOR_REGEX'], '{%alias%}') !== false) {
+                    $auth['alias'] = $authId;
+                }
+            }
+            if (isset($auth['id'])) {
+                /** @var Member $author */
+                $author = $zbp->GetMemberByID($auth['id']);
+            } else {
+                /** @var Member $author */
+                $author = $zbp->GetMemberByNameOrAlias($auth['alias']);
+            }
+
+            if ($author->ID == '') {
+                if ($isrewrite) {
+                    return false;
+                }
+
+                $zbp->ShowError(2, __FILE__, __LINE__);
+            }
+            if ($page == 1) {
+                $zbp->title = $author->StaticName;
+            } else {
+                $zbp->title = $author->StaticName . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
+            }
+                $template = $author->Template;
+                $w[] = array('=', 'log_AuthorID', $author->ID);
+                //$pagebar->Count = $author->Articles;
+                $pagebar->UrlRule->Rules['{%id%}'] = $author->ID;
+                $pagebar->UrlRule->Rules['{%alias%}'] = $author->Alias == '' ? rawurlencode($author->Name) : $author->Alias;
+            break;
+    //#######################################################################################################
+        case 'date':
+            $pagebar = new Pagebar($zbp->option['ZC_DATE_REGEX']);
+
+            if (!is_array($date)) {
+                $datetime = $date;
+            } else {
+                $datetime = $date['date'];
+            }
+
+                $dateregex_ymd = '/[0-9]{1,4}-[0-9]{1,2}-[0-9]{1,2}/i';
+                $dateregex_ym = '/[0-9]{1,4}-[0-9]{1,2}/i';
+
+            if (preg_match($dateregex_ymd, $datetime) == 0 && preg_match($dateregex_ym, $datetime) == 0) {
+                return false;
+            }
+                $datetime_txt = $datetime;
+                $datetime = strtotime($datetime);
+            if ($datetime == false) {
                 return false;
             }
 
-            $zbp->ShowError(2, __FILE__, __LINE__);
-        }
-        if ($page == 1) {
-            $zbp->title = $category->Name;
-        } else {
-            $zbp->title = $category->Name . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
-        }
-        $template = $category->Template;
-
-        if (!$zbp->option['ZC_DISPLAY_SUBCATEGORYS']) {
-            $w[] = array('=', 'log_CateID', $category->ID);
-            $pagebar->Count = $category->Count;
-        } else {
-            $arysubcate = array();
-            $arysubcate[] = array('log_CateID', $category->ID);
-            foreach ($zbp->categories[$category->ID]->ChildrenCategories as $subcate) {
-                $arysubcate[] = array('log_CateID', $subcate->ID);
-            }
-            $w[] = array('array', $arysubcate);
-        }
-
-        $pagebar->UrlRule->Rules['{%id%}'] = $category->ID;
-        $pagebar->UrlRule->Rules['{%alias%}'] = $category->Alias == '' ? rawurlencode($category->Name) : $category->Alias;
-        break;
-    ########################################################################################################
-    case 'author':
-        $pagebar = new Pagebar($zbp->option['ZC_AUTHOR_REGEX']);
-        $author = new Member;
-
-        if (!is_array($auth)) {
-            $authId = $auth;
-            $auth = array();
-            if (strpos($zbp->option['ZC_AUTHOR_REGEX'], '{%id%}') !== false) {
-                $auth['id'] = $authId;
-            }
-            if (strpos($zbp->option['ZC_AUTHOR_REGEX'], '{%alias%}') !== false) {
-                $auth['alias'] = $authId;
-            }
-        }
-        if (isset($auth['id'])) {
-            $author = $zbp->GetMemberByID($auth['id']);
-        } else {
-            $author = $zbp->GetMemberByNameOrAlias($auth['alias']);
-        }
-
-        if ($author->ID == 0) {
-            if ($isrewrite) {
-                return false;
+            if (preg_match($dateregex_ymd, $datetime_txt) != 0 && isset($zbp->lang['msg']['year_month_day'])) {
+                $datetitle = str_replace(array('%y%', '%m%', '%d%'), array(date('Y', $datetime), date('n', $datetime), date('j', $datetime)), $zbp->lang['msg']['year_month_day']);
+            } else {
+                $datetitle = str_replace(array('%y%', '%m%'), array(date('Y', $datetime), date('n', $datetime)), $zbp->lang['msg']['year_month']);
             }
 
-            $zbp->ShowError(2, __FILE__, __LINE__);
-        }
-        if ($page == 1) {
-            $zbp->title = $author->StaticName;
-        } else {
-            $zbp->title = $author->StaticName . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
-        }
-        $template = $author->Template;
-        $w[] = array('=', 'log_AuthorID', $author->ID);
-        $pagebar->Count = $author->Articles;
-        $pagebar->UrlRule->Rules['{%id%}'] = $author->ID;
-        $pagebar->UrlRule->Rules['{%alias%}'] = $author->Alias == '' ? rawurlencode($author->Name) : $author->Alias;
-        break;
-    ########################################################################################################
-    case 'date':
-        $pagebar = new Pagebar($zbp->option['ZC_DATE_REGEX']);
-
-        if (!is_array($date)) {
-            $datetime = $date;
-        } else {
-            $datetime = $date['date'];
-        }
-
-        $dateregex_ymd = '/[0-9]{1,4}-[0-9]{1,2}-[0-9]{1,2}/i';
-        $dateregex_ym = '/[0-9]{1,4}-[0-9]{1,2}/i';
-
-        if(preg_match($dateregex_ymd, $datetime) == 0 && preg_match($dateregex_ym, $datetime) == 0){
-            return false;
-        }
-        $datetime_txt = $datetime;
-        $datetime = strtotime($datetime);
-        if($datetime == false){
-            return false;
-        }
-
-        if(preg_match($dateregex_ymd, $datetime_txt) != 0 && isset($zbp->lang['msg']['year_month_day'])){
-            $datetitle = str_replace(array('%y%', '%m%', '%d%'), array(date('Y', $datetime), date('n', $datetime), date('j', $datetime)), $zbp->lang['msg']['year_month_day']);
-        }else{
-            $datetitle = str_replace(array('%y%', '%m%'), array(date('Y', $datetime), date('n', $datetime)), $zbp->lang['msg']['year_month']);
-        }
-
-        if ($page == 1) {
-            $zbp->title = $datetitle;
-        } else {
-            $zbp->title = $datetitle . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
-        }
-
-        $zbp->modulesbyfilename['calendar']->Content = ModuleBuilder::Calendar(date('Y', $datetime) . '-' . date('n', $datetime));
-
-        $template = $zbp->option['ZC_INDEX_DEFAULT_TEMPLATE'];
-
-        if(preg_match($dateregex_ymd, $datetime_txt) != 0){
-            $w[] = array('BETWEEN', 'log_PostTime', $datetime, strtotime('+1 day', $datetime));
-            $pagebar->UrlRule->Rules['{%date%}'] = date('Y-n-j', $datetime);
-        } else {
-            $w[] = array('BETWEEN', 'log_PostTime', $datetime, strtotime('+1 month', $datetime));
-            $pagebar->UrlRule->Rules['{%date%}'] = date('Y-n', $datetime);
-        }
-
-        $datetime = Metas::ConvertArray(getdate($datetime));
-        break;
-    ########################################################################################################
-    case 'tag':
-        $pagebar = new Pagebar($zbp->option['ZC_TAGS_REGEX']);
-        $tag = new Tag;
-
-        if (!is_array($tags)) {
-            $tagId = $tags;
-            $tags = array();
-            if (strpos($zbp->option['ZC_TAGS_REGEX'], '{%id%}') !== false) {
-                $tags['id'] = $tagId;
-            }
-            if (strpos($zbp->option['ZC_TAGS_REGEX'], '{%alias%}') !== false) {
-                $tags['alias'] = $tagId;
-            }
-        }
-        if (isset($tags['id'])) {
-            $tag = $zbp->GetTagByID($tags['id']);
-        } else {
-            $tag = $zbp->GetTagByAliasOrName($tags['alias']);
-        }
-
-        if ($tag->ID == 0) {
-            if ($isrewrite == true) {
-                return false;
+            if ($page == 1) {
+                $zbp->title = $datetitle;
+            } else {
+                $zbp->title = $datetitle . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
             }
 
-            $zbp->ShowError(2, __FILE__, __LINE__);
-        }
+                $zbp->modulesbyfilename['calendar']->Content = ModuleBuilder::Calendar(date('Y', $datetime) . '-' . date('n', $datetime));
 
-        if ($page == 1) {
-            $zbp->title = $tag->Name;
-        } else {
-            $zbp->title = $tag->Name . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
-        }
+                $template = $zbp->option['ZC_INDEX_DEFAULT_TEMPLATE'];
 
-        $template = $tag->Template;
-        $w[] = array('LIKE', 'log_Tag', '%{' . $tag->ID . '}%');
-        $pagebar->UrlRule->Rules['{%id%}'] = $tag->ID;
-        $pagebar->UrlRule->Rules['{%alias%}'] = $tag->Alias == '' ? rawurlencode($tag->Name) : $tag->Alias;
-        break;
+            if (preg_match($dateregex_ymd, $datetime_txt) != 0) {
+                $w[] = array('BETWEEN', 'log_PostTime', $datetime, strtotime('+1 day', $datetime));
+                $pagebar->UrlRule->Rules['{%date%}'] = date('Y-n-j', $datetime);
+            } else {
+                $w[] = array('BETWEEN', 'log_PostTime', $datetime, strtotime('+1 month', $datetime));
+                $pagebar->UrlRule->Rules['{%date%}'] = date('Y-n', $datetime);
+            }
+
+                $datetime = Metas::ConvertArray(getdate($datetime));
+            break;
+    //#######################################################################################################
+        case 'tag':
+            $pagebar = new Pagebar($zbp->option['ZC_TAGS_REGEX']);
+            $tag = new Tag();
+
+            if (!is_array($tags)) {
+                $tagId = $tags;
+                $tags = array();
+                if (strpos($zbp->option['ZC_TAGS_REGEX'], '{%id%}') !== false) {
+                    $tags['id'] = $tagId;
+                }
+                if (strpos($zbp->option['ZC_TAGS_REGEX'], '{%alias%}') !== false) {
+                    $tags['alias'] = $tagId;
+                }
+            }
+            if (isset($tags['id'])) {
+                $tag = $zbp->GetTagByID($tags['id']);
+            } else {
+                $tag = $zbp->GetTagByAliasOrName($tags['alias']);
+            }
+
+            if ($tag->ID == 0) {
+                if ($isrewrite == true) {
+                    return false;
+                }
+
+                $zbp->ShowError(2, __FILE__, __LINE__);
+            }
+
+            if ($page == 1) {
+                $zbp->title = $tag->Name;
+            } else {
+                $zbp->title = $tag->Name . ' ' . str_replace('%num%', $page, $zbp->lang['msg']['number_page']);
+            }
+
+                $template = $tag->Template;
+                $w[] = array('LIKE', 'log_Tag', '%{' . $tag->ID . '}%');
+                $pagebar->UrlRule->Rules['{%id%}'] = $tag->ID;
+                $pagebar->UrlRule->Rules['{%alias%}'] = $tag->Alias == '' ? rawurlencode($tag->Name) : $tag->Alias;
+            break;
+        default:
+            throw new Exception('Unknown type');
     }
 
     $pagebar->PageCount = $zbp->displaycount;
@@ -901,7 +1040,7 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
     $pagebar->UrlRule->Rules['{%page%}'] = $page;
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewList_Core'] as $fpname => &$fpsignal) {
-        $fpname($type, $page, $category, $author, $datetime, $tag, $w, $pagebar);
+        $fpname($type, $page, $category, $author, $datetime, $tag, $w, $pagebar, $template);
     }
 
     if ($zbp->option['ZC_LISTONTOP_TURNOFF'] == false) {
@@ -910,7 +1049,6 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
             if ($articles_top_notorder_post->TopType == 'global') {
                 $articles_top[] = $articles_top_notorder_post;
             }
-
         }
 
         if ($type == 'index' && $page == 1) {
@@ -918,7 +1056,6 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
                 if ($articles_top_notorder_post->TopType == 'index') {
                     $articles_top[] = $articles_top_notorder_post;
                 }
-
             }
         }
 
@@ -927,9 +1064,7 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
                 if ($articles_top_notorder_post->TopType == 'category' && $articles_top_notorder_post->CateID == $category->ID) {
                     $articles_top[] = $articles_top_notorder_post;
                 }
-
             }
-
         }
     }
 
@@ -939,7 +1074,7 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
     $option = array('pagebar' => $pagebar);
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_LargeData_Article'] as $fpname => &$fpsignal) {
-        $fpreturn = $fpname($select, $w, $order, $limit, $option);
+        $fpreturn = $fpname($select, $w, $order, $limit, $option, $type);
     }
 
     $articles = $zbp->GetArticleList(
@@ -950,6 +1085,10 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
         $option,
         true
     );
+
+    if (count($articles) <= 0 && $page > 1) {
+        $zbp->ShowError(2, __FILE__, __LINE__);
+    }
 
     $zbp->template->SetTags('title', $zbp->title);
     $zbp->template->SetTags('articles', array_merge($articles_top, $articles));
@@ -974,6 +1113,11 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewList_Template'] as $fpname => &$fpsignal) {
         $fpreturn = $fpname($zbp->template);
+        if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
+            $fpsignal = PLUGIN_EXITSIGNAL_NONE;
+
+            return $fpreturn;
+        }
     }
 
     $zbp->template->Display();
@@ -982,13 +1126,18 @@ function ViewList($page, $cate, $auth, $date, $tags, $isrewrite = false) {
 }
 
 /**
- * 显示文章
- * @param int $id 文章ID
- * @param string $alias 文章别名
- * @param bool $isrewrite 是否启用urlrewrite
+ * 显示文章.
+ *
+ * @param array|int|string $object         文章ID/ ID/别名对象
+ * @param string           $theSecondParam （如果有的话）文章别名
+ * @param bool             $enableRewrite  是否启用urlrewrite
+ *
+ * @throws Exception
+ *
  * @return string
  */
-function ViewPost($object, $theSecondParam, $isrewrite = false) {
+function ViewPost($object, $theSecondParam, $enableRewrite = false)
+{
     global $zbp;
 
     if (is_array($object)) {
@@ -1006,7 +1155,7 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
         $fpargs = func_get_args();
         $fpargs[0] = $id;
         $fpargs[1] = $alias;
-        $fpreturn = call_user_func_array( $fpname, $fpargs );
+        $fpreturn = call_user_func_array($fpname, $fpargs);
         if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
             $fpsignal = PLUGIN_EXITSIGNAL_NONE;
 
@@ -1014,7 +1163,11 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
         }
     }
 
+    $select = '*';
     $w = array();
+    $order = null;
+    $limit = 1;
+    $option = null;
 
     if ($id !== null) {
         if (function_exists('ctype_digit') && !ctype_digit((string) $id)) {
@@ -1037,9 +1190,13 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
         $w[] = array('=', 'log_Status', 0);
     }
 
-    $articles = $zbp->GetPostList('*', $w, null, 1, null);
+    foreach ($GLOBALS['hooks']['Filter_Plugin_ViewPost_Core'] as $fpname => &$fpsignal) {
+        $fpname($select, $w, $order, $limit, $option);
+    }
+
+    $articles = $zbp->GetPostList($select, $w, $order, $limit, $option);
     if (count($articles) == 0) {
-        if ($isrewrite == true) {
+        if ($enableRewrite == true) {
             return false;
         }
 
@@ -1048,8 +1205,7 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
 
     $article = $articles[0];
 
-
-    if ($isrewrite && !(stripos(urldecode($article->Url), $object[0]) !== false)) {
+    if ($enableRewrite && !(stripos(urldecode($article->Url), $object[0]) !== false)) {
         $zbp->ShowError(2, __FILE__, __LINE__);
         exit;
     }
@@ -1107,10 +1263,16 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
         foreach ($comments as &$comment) {
             $floorid += 1;
             $comment->FloorID = $floorid;
-            $comment->Content = TransferHTML($comment->Content, '[enter]') . '<label id="AjaxComment' . $comment->ID . '"></label>';
+            $comment->Content = FormatString($comment->Content, '[enter]');
+            if (strpos($zbp->template->templates['comment'], 'id="AjaxComment') === false) {
+                $comment->Content .= '<label id="AjaxComment' . $comment->ID . '"></label>';
+            }
         }
         foreach ($comments2 as &$comment) {
-            $comment->Content = TransferHTML($comment->Content, '[enter]') . '<label id="AjaxComment' . $comment->ID . '"></label>';
+            $comment->Content = FormatString($comment->Content, '[enter]');
+            if (strpos($zbp->template->templates['comment'], 'id="AjaxComment') === false) {
+                $comment->Content .= '<label id="AjaxComment' . $comment->ID . '"></label>';
+            }
         }
     }
 
@@ -1133,6 +1295,11 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_ViewPost_Template'] as $fpname => &$fpsignal) {
         $fpreturn = $fpname($zbp->template);
+        if ($fpsignal == PLUGIN_EXITSIGNAL_RETURN) {
+            $fpsignal = PLUGIN_EXITSIGNAL_NONE;
+
+            return $fpreturn;
+        }
     }
 
     $zbp->template->Display();
@@ -1141,15 +1308,20 @@ function ViewPost($object, $theSecondParam, $isrewrite = false) {
 }
 
 /**
- * 显示文章下评论列表
+ * 显示文章下评论列表.
+ *
  * @param int $postid 文章ID
- * @param int $page 页数
+ * @param int $page   页数
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function ViewComments($postid, $page) {
+function ViewComments($postid, $page)
+{
     global $zbp;
 
-    $post = new Post;
+    $post = new Post();
     $post->LoadInfoByID($postid);
     $page = $page == 0 ? 1 : $page;
     $template = 'comments';
@@ -1193,10 +1365,16 @@ function ViewComments($postid, $page) {
     foreach ($comments as &$comment) {
         $floorid += 1;
         $comment->FloorID = $floorid;
-        $comment->Content = TransferHTML($comment->Content, '[enter]') . '<label id="AjaxComment' . $comment->ID . '"></label>';
+        $comment->Content = FormatString($comment->Content, '[enter]');
+        if (strpos($zbp->template->templates['comment'], 'id="AjaxComment') === false) {
+            $comment->Content .= '<label id="AjaxComment' . $comment->ID . '"></label>';
+        }
     }
     foreach ($comments2 as &$comment) {
-        $comment->Content = TransferHTML($comment->Content, '[enter]') . '<label id="AjaxComment' . $comment->ID . '"></label>';
+        $comment->Content = FormatString($comment->Content, '[enter]');
+        if (strpos($zbp->template->templates['comment'], 'id="AjaxComment') === false) {
+            $comment->Content .= '<label id="AjaxComment' . $comment->ID . '"></label>';
+        }
     }
 
     $zbp->template->SetTags('title', $zbp->title);
@@ -1229,18 +1407,28 @@ function ViewComments($postid, $page) {
 }
 
 /**
- * 显示评论
+ * 显示评论.
+ *
  * @param int $id 评论ID
+ *
+ * @throws Exception
+ *
+ * @return bool
  */
-function ViewComment($id) {
+function ViewComment($id)
+{
     global $zbp;
 
     $template = 'comment';
+    /** @var Comment $comment */
     $comment = $zbp->GetCommentByID($id);
-    $post = new Post;
+    $post = new Post();
     $post->LoadInfoByID($comment->LogID);
 
-    $comment->Content = TransferHTML(htmlspecialchars($comment->Content), '[enter]') . '<label id="AjaxComment' . $comment->ID . '"></label>';
+    $comment->Content = FormatString(htmlspecialchars($comment->Content), '[enter]');
+    if (strpos($zbp->template->templates['comment'], 'id="AjaxComment') === false) {
+        $comment->Content .= '<label id="AjaxComment' . $comment->ID . '"></label>';
+    }
 
     $zbp->template->SetTags('title', $zbp->title);
     $zbp->template->SetTags('comment', $comment);
@@ -1258,17 +1446,22 @@ function ViewComment($id) {
     return true;
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交文章数据
+ * 提交文章数据.
+ *
  * @api Filter_Plugin_PostArticle_Core
  * @api Filter_Plugin_PostArticle_Succeed
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function PostArticle() {
+function PostArticle()
+{
     global $zbp;
     if (!isset($_POST['ID'])) {
-        return;
+        return false;
     }
 
     if (isset($_COOKIE['timezone'])) {
@@ -1280,7 +1473,7 @@ function PostArticle() {
     }
 
     if (isset($_POST['Tag'])) {
-        $_POST['Tag'] = TransferHTML($_POST['Tag'], '[noscript]');
+        $_POST['Tag'] = FormatString($_POST['Tag'], '[noscript]');
         $_POST['Tag'] = PostArticle_CheckTagAndConvertIDtoString($_POST['Tag']);
     }
     if (isset($_POST['Content'])) {
@@ -1295,7 +1488,7 @@ function PostArticle() {
                 if ($_POST['Intro'] == '' || (stripos($_POST['Intro'], '<!--autointro-->') !== false)) {
                     //$_POST['Intro'] = SubStrUTF8_Html($_POST['Content'], (int) strpos($_POST['Content'], '>') + (int) $zbp->option['ZC_ARTICLE_EXCERPT_MAX']);
                     //改纯HTML摘要
-                    $_POST['Intro'] = TransferHTML($_POST['Content'], "[nohtml]");
+                    $_POST['Intro'] = FormatString($_POST['Content'], "[nohtml]");
                     $_POST['Intro'] = SubStrUTF8_Html($_POST['Intro'], (int) $zbp->option['ZC_ARTICLE_EXCERPT_MAX']);
                     $_POST['Intro'] .= '<!--autointro-->';
                 }
@@ -1310,14 +1503,13 @@ function PostArticle() {
         if (($_POST['AuthorID'] != $zbp->user->ID) && (!$zbp->CheckRights('ArticleAll'))) {
             $_POST['AuthorID'] = $zbp->user->ID;
         }
-        if ($_POST['AuthorID'] == 0) {
+        if (empty($_POST['AuthorID'])) {
             $_POST['AuthorID'] = $zbp->user->ID;
         }
-
     }
 
     if (isset($_POST['Alias'])) {
-        $_POST['Alias'] = TransferHTML($_POST['Alias'], '[noscript]');
+        $_POST['Alias'] = FormatString($_POST['Alias'], '[noscript]');
     }
 
     if (isset($_POST['PostTime'])) {
@@ -1357,22 +1549,15 @@ function PostArticle() {
     }
 
     foreach ($zbp->datainfo['Post'] as $key => $value) {
-        if ($key == 'ID' || $key == 'Meta') {continue;}
+        if ($key == 'ID' || $key == 'Meta') {
+            continue;
+        }
         if (isset($_POST[$key])) {
             $article->$key = GetVars($key, 'POST');
         }
     }
 
     $article->Type = ZC_POST_TYPE_ARTICLE;
-
-    if (isset($_POST['IsTop'])) {
-        if (1 == $_POST['IsTop']) {
-            $article->TopType = $_POST['IstopType'];
-        }
-        if (0 == $_POST['IsTop']) {
-            $article->TopType = null;
-        }
-    }
 
     FilterMeta($article);
 
@@ -1388,8 +1573,12 @@ function PostArticle() {
     $pre_arrayTag = $zbp->LoadTagsByIDString($pre_tag);
     $now_arrayTag = $zbp->LoadTagsByIDString($article->Tag);
     $pre_array = $now_array = array();
-    foreach ($pre_arrayTag as $tag) {$pre_array[] = $tag->ID;}
-    foreach ($now_arrayTag as $tag) {$now_array[] = $tag->ID;}
+    foreach ($pre_arrayTag as $tag) {
+        $pre_array[] = $tag->ID;
+    }
+    foreach ($now_arrayTag as $tag) {
+        $now_array[] = $tag->ID;
+    }
     $del_array = array_diff($pre_array, $now_array);
     $add_array = array_diff($now_array, $pre_array);
     $del_string = $zbp->ConvertTagIDtoString($del_array);
@@ -1428,9 +1617,9 @@ function PostArticle() {
         }
     }
     if ($article->IsTop == true && $article->Status == ZC_POST_STATUS_PUBLIC) {
-        CountTopArticle($article->ID, null);
+        CountTopArticle($article->Type, $article->ID, null);
     } else {
-        CountTopArticle(null, $article->ID);
+        CountTopArticle($article->Type, null, $article->ID);
     }
 
     $zbp->AddBuildModule('previous');
@@ -1448,10 +1637,14 @@ function PostArticle() {
 }
 
 /**
- * 删除文章
+ * 删除文章.
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function DelArticle() {
+function DelArticle()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
@@ -1459,7 +1652,6 @@ function DelArticle() {
     $article = new Post();
     $article->LoadInfoByID($id);
     if ($article->ID > 0) {
-
         if (!$zbp->CheckRights('ArticleAll') && $article->AuthorID != $zbp->user->ID) {
             $zbp->ShowError(6, __FILE__, __LINE__);
         }
@@ -1481,7 +1673,7 @@ function DelArticle() {
             CountNormalArticleNums(-1);
         }
         if ($article->IsTop == true) {
-            CountTopArticle(null, $article->ID);
+            CountTopArticle($article->Type, null, $article->ID);
         }
 
         $zbp->AddBuildModule('previous');
@@ -1496,17 +1688,20 @@ function DelArticle() {
         }
 
         return true;
-
     }
 
+    return false;
 }
 
 /**
- * 提交文章数据时检查tag数据，并将新tags转为标准格式返回
+ * 提交文章数据时检查tag数据，并将新tags转为标准格式返回.
+ *
  * @param string $tagnamestring 提交的文章tag数据，可以:,，、等符号分隔
+ *
  * @return string 返回如'{1}{2}{3}{4}'的字符串
  */
-function PostArticle_CheckTagAndConvertIDtoString($tagnamestring) {
+function PostArticle_CheckTagAndConvertIDtoString($tagnamestring)
+{
     global $zbp;
     $s = '';
     $tagnamestring = str_replace(';', ',', $tagnamestring);
@@ -1524,12 +1719,11 @@ function PostArticle_CheckTagAndConvertIDtoString($tagnamestring) {
 
     $a = explode(',', $tagnamestring);
     $b = array();
-    foreach ($a as &$value) {
-        $value = trim($value);
-        if ($value) {
-            $b[] = $value;
+    foreach ($a as $value) {
+        $v = trim($value);
+        if ($v) {
+            $b[] = $v;
         }
-
     }
     $b = array_unique($b);
     $b = array_slice($b, 0, 20);
@@ -1542,7 +1736,7 @@ function PostArticle_CheckTagAndConvertIDtoString($tagnamestring) {
     $d = array_diff($b, $c);
     if ($zbp->CheckRights('TagNew')) {
         foreach ($d as $key) {
-            $tag = new Tag;
+            $tag = new Tag();
             $tag->Name = $key;
 
             foreach ($GLOBALS['hooks']['Filter_Plugin_PostTag_Core'] as $fpname => &$fpsignal) {
@@ -1557,7 +1751,6 @@ function PostArticle_CheckTagAndConvertIDtoString($tagnamestring) {
             foreach ($GLOBALS['hooks']['Filter_Plugin_PostTag_Succeed'] as $fpname => &$fpsignal) {
                 $fpname($tag);
             }
-
         }
     }
 
@@ -1573,25 +1766,31 @@ function PostArticle_CheckTagAndConvertIDtoString($tagnamestring) {
 }
 
 /**
- * 删除文章下所有评论
+ * 删除文章下所有评论.
+ *
  * @param int $id 文章ID
  */
-function DelArticle_Comments($id) {
+function DelArticle_Comments($id)
+{
     global $zbp;
 
     $sql = $zbp->db->sql->Delete($zbp->table['Comment'], array(array('=', 'comm_LogID', $id)));
     $zbp->db->Delete($sql);
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交页面数据
+ * 提交页面数据.
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function PostPage() {
+function PostPage()
+{
     global $zbp;
     if (!isset($_POST['ID'])) {
-        return;
+        return false;
     }
 
     if (isset($_POST['PostTime'])) {
@@ -1607,7 +1806,7 @@ function PostPage() {
     }
 
     if (isset($_POST['Alias'])) {
-        $_POST['Alias'] = TransferHTML($_POST['Alias'], '[noscript]');
+        $_POST['Alias'] = FormatString($_POST['Alias'], '[noscript]');
     }
 
     $article = new Post();
@@ -1624,7 +1823,9 @@ function PostPage() {
     }
 
     foreach ($zbp->datainfo['Post'] as $key => $value) {
-        if ($key == 'ID' || $key == 'Meta') {continue;}
+        if ($key == 'ID' || $key == 'Meta') {
+            continue;
+        }
         if (isset($_POST[$key])) {
             $article->$key = GetVars($key, 'POST');
         }
@@ -1671,10 +1872,14 @@ function PostPage() {
 }
 
 /**
- * 删除页面
+ * 删除页面.
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function DelPage() {
+function DelPage()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
@@ -1682,7 +1887,6 @@ function DelPage() {
     $article = new Post();
     $article->LoadInfoByID($id);
     if ($article->ID > 0) {
-
         if (!$zbp->CheckRights('PageAll') && $article->AuthorID != $zbp->user->ID) {
             $zbp->ShowError(6, __FILE__, __LINE__);
         }
@@ -1702,39 +1906,43 @@ function DelPage() {
         foreach ($GLOBALS['hooks']['Filter_Plugin_DelPage_Succeed'] as $fpname => &$fpsignal) {
             $fpname($article);
         }
-    } else {
-
     }
 
     return true;
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交评论
+ * 提交评论.
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function PostComment() {
+function PostComment()
+{
     global $zbp;
 
     $isAjax = GetVars('isajax', 'POST');
     $returnJson = GetVars('format', 'POST') == 'json';
     $returnCommentWhiteList = array(
-        'ID' => null,
-        'Content' => null,
-        'LogId' => null,
-        'Name' => null,
+        'ID'       => null,
+        'Content'  => null,
+        'LogId'    => null,
+        'Name'     => null,
         'ParentID' => null,
         'PostTime' => null,
         'HomePage' => null,
-        'Email' => null,
+        'Email'    => null,
         'AuthorID' => null,
     );
 
     $_POST['LogID'] = $_GET['postid'];
 
     if ($zbp->ValidCmtKey($_GET['postid'], $_GET['key']) == false) {
-        $zbp->ShowError(43, __FILE__, __LINE__);
+        if (isset($zbp->option['ZC_COMMENT_VALIDCMTKEY_ENABLE']) && $zbp->option['ZC_COMMENT_VALIDCMTKEY_ENABLE']) {
+            $zbp->ShowError(43, __FILE__, __LINE__);
+        }
     }
 
     if ($zbp->option['ZC_COMMENT_VERIFY_ENABLE']) {
@@ -1742,7 +1950,6 @@ function PostComment() {
             if ($zbp->CheckValidCode($_POST['verify'], 'cmt') == false) {
                 $zbp->ShowError(38, __FILE__, __LINE__);
             }
-
         }
     }
 
@@ -1754,7 +1961,7 @@ function PostComment() {
         }
     }
 
-    $replyid = (integer) GetVars('replyid', 'POST');
+    $replyid = (int) GetVars('replyid', 'POST');
 
     if ($replyid == 0) {
         $_POST['RootID'] = 0;
@@ -1777,14 +1984,16 @@ function PostComment() {
     $_POST['Email'] = GetVars('email', 'POST');
     $_POST['HomePage'] = GetVars('homepage', 'POST');
     $_POST['Content'] = GetVars('content', 'POST');
-    $_POST['PostTime'] = Time();
+    $_POST['PostTime'] = time();
     $_POST['IP'] = GetGuestIP();
     $_POST['Agent'] = GetGuestAgent();
 
     $cmt = new Comment();
 
     foreach ($zbp->datainfo['Comment'] as $key => $value) {
-        if ($key == 'ID' || $key == 'Meta') {continue;}
+        if ($key == 'ID' || $key == 'Meta') {
+            continue;
+        }
         if ($key == 'IsChecking') {
             continue;
         }
@@ -1820,6 +2029,10 @@ function PostComment() {
 
     CountPostArray(array($cmt->LogID), +1);
     CountCommentNums(+1, 0);
+    if ($zbp->user->ID > 0) {
+        CountMember($zbp->user, array(0, 0, 1, 0));
+        $zbp->user->Save();
+    }
 
     $zbp->AddBuildModule('comments');
 
@@ -1834,7 +2047,6 @@ function PostComment() {
         JsonReturn(array_merge_recursive(array(
             "html" => $commentHtml,
         ), array_intersect_key($cmt->GetData(), $returnCommentWhiteList)));
-
     }
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_PostComment_Succeed'] as $fpname => &$fpsignal) {
@@ -1842,20 +2054,20 @@ function PostComment() {
     }
 
     return true;
-
 }
 
 /**
- * 删除评论
+ * 删除评论.
+ *
  * @return bool
  */
-function DelComment() {
+function DelComment()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
     $cmt = $zbp->GetCommentByID($id);
     if ($cmt->ID > 0) {
-
         $comments = $zbp->GetCommentList('*', array(array('=', 'comm_LogID', $cmt->LogID)), null, null, null);
 
         DelComment_Children($cmt->ID);
@@ -1869,6 +2081,10 @@ function DelComment() {
 
         if ($cmt->IsChecking == false) {
             CountPostArray(array($cmt->LogID), -1);
+            if ($cmt->AuthorID > 0) {
+                CountMember($cmt->Author, array(0, 0, -1, 0));
+                $cmt->Author->Save();
+            }
         }
 
         $zbp->AddBuildModule('comments');
@@ -1882,16 +2098,18 @@ function DelComment() {
 }
 
 /**
- * 删除评论下的子评论
+ * 删除评论下的子评论.
+ *
  * @param int $id 父评论ID
  */
-function DelComment_Children($id) {
+function DelComment_Children($id)
+{
     global $zbp;
 
     $cmt = $zbp->GetCommentByID($id);
 
     foreach ($cmt->Comments as $comment) {
-        if (Count($comment->Comments) > 0) {
+        if (count($comment->Comments) > 0) {
             DelComment_Children($comment->ID);
         }
         if ($comment->IsChecking == false) {
@@ -1901,32 +2119,34 @@ function DelComment_Children($id) {
         }
         $comment->Del();
     }
-
 }
 
 /**
- * 只历遍并保留评论id进array,不进行删除
- * @param int $id 父评论ID
- * @param array $array 将子评论ID存入新数组
+ * 只历遍并保留评论id进array,不进行删除.
+ *
+ * @param int       $id    父评论ID
+ * @param Comment[] $array 将子评论ID存入新数组
  */
-function GetSubComments($id, &$array) {
+function GetSubComments($id, &$array)
+{
     global $zbp;
 
+    /** @var Comment $cmt */
     $cmt = $zbp->GetCommentByID($id);
 
     foreach ($cmt->Comments as $comment) {
         $array[] = $comment->ID;
-        if (Count($comment->Comments) > 0) {
+        if (count($comment->Comments) > 0) {
             GetSubComments($comment->ID, $array);
         }
     }
-
 }
 
 /**
- *检查评论数据并保存、更新计数、更新“最新评论”模块
+ *检查评论数据并保存、更新计数、更新“最新评论”模块.
  */
-function CheckComment() {
+function CheckComment()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
@@ -1936,32 +2156,52 @@ function CheckComment() {
     $orig_check = (bool) $cmt->IsChecking;
     $cmt->IsChecking = $ischecking;
 
+    foreach ($GLOBALS['hooks']['Filter_Plugin_CheckComment_Core'] as $fpname => &$fpsignal) {
+        $fpname($cmt);
+    }
+
     $cmt->Save();
+
+    foreach ($GLOBALS['hooks']['Filter_Plugin_CheckComment_Succeed'] as $fpname => &$fpsignal) {
+        $fpname($cmt);
+    }
 
     if (($orig_check) && (!$ischecking)) {
         CountPostArray(array($cmt->LogID), +1);
         CountCommentNums(0, -1);
+        if ($cmt->AuthorID > 0) {
+            CountMember($cmt->Author, array(0, 0, +1, 0));
+            $cmt->Author->Save();
+        }
     } elseif ((!$orig_check) && ($ischecking)) {
         CountPostArray(array($cmt->LogID), -1);
         CountCommentNums(0, +1);
+        if ($cmt->AuthorID > 0) {
+            CountMember($cmt->Author, array(0, 0, -1, 0));
+            $cmt->Author->Save();
+        }
     }
 
     $zbp->AddBuildModule('comments');
 }
 
 /**
- * 评论批量处理（删除、通过审核、加入审核）
+ * 评论批量处理（删除、通过审核、加入审核）.
  */
-function BatchComment() {
+function BatchComment()
+{
     global $zbp;
     if (isset($_POST['all_del'])) {
         $type = 'all_del';
-    }
-    if (isset($_POST['all_pass'])) {
+    } elseif (isset($_POST['all_pass'])) {
         $type = 'all_pass';
-    }
-    if (isset($_POST['all_audit'])) {
+    } elseif (isset($_POST['all_audit'])) {
         $type = 'all_audit';
+    } else {
+        return;
+    }
+    if (!isset($_POST['id'])) {
+        return;
     }
     $array = $_POST['id'];
     if (is_array($array)) {
@@ -1971,6 +2211,7 @@ function BatchComment() {
     }
 
     // Search Child Comments
+    /** @var Comment[] $childArray */
     $childArray = array();
     foreach ($array as $i => $id) {
         $cmt = $zbp->GetCommentByID($id);
@@ -1990,6 +2231,10 @@ function BatchComment() {
             if (!$cmt->IsChecking) {
                 CountPostArray(array($cmt->LogID), -1);
                 CountCommentNums(-1, 0);
+                if ($cmt->AuthorID > 0) {
+                    CountMember($cmt->Author, array(0, 0, -1, 0));
+                    $cmt->Author->Save();
+                }
             } else {
                 CountCommentNums(-1, -1);
             }
@@ -2004,6 +2249,10 @@ function BatchComment() {
             $cmt->Save();
             CountPostArray(array($cmt->LogID), +1);
             CountCommentNums(0, -1);
+            if ($cmt->AuthorID > 0) {
+                CountMember($cmt->Author, array(0, 0, 1, 0));
+                $cmt->Author->Save();
+            }
         }
     } elseif ($type == 'all_audit') {
         foreach ($childArray as $i => $cmt) {
@@ -2015,24 +2264,30 @@ function BatchComment() {
             $cmt->Save();
             CountPostArray(array($cmt->LogID), -1);
             CountCommentNums(0, +1);
+            if ($cmt->AuthorID > 0) {
+                CountMember($cmt->Author, array(0, 0, -1, 0));
+                $cmt->Author->Save();
+            }
         }
     }
 
     $zbp->AddBuildModule('comments');
 }
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交分类数据
+ * 提交分类数据.
+ *
  * @return bool
  */
-function PostCategory() {
+function PostCategory()
+{
     global $zbp;
     if (!isset($_POST['ID'])) {
-        return;
+        return false;
     }
 
     if (isset($_POST['Alias'])) {
-        $_POST['Alias'] = TransferHTML($_POST['Alias'], '[noscript]');
+        $_POST['Alias'] = FormatString($_POST['Alias'], '[noscript]');
     }
 
     $parentid = (int) GetVars('ParentID', 'POST');
@@ -2049,7 +2304,9 @@ function PostCategory() {
     }
 
     foreach ($zbp->datainfo['Category'] as $key => $value) {
-        if ($key == 'ID' || $key == 'Meta') {continue;}
+        if ($key == 'ID' || $key == 'Meta') {
+            continue;
+        }
         if (isset($_POST[$key])) {
             $cate->$key = GetVars($key, 'POST');
         }
@@ -2073,7 +2330,7 @@ function PostCategory() {
 
     $cate->Save();
 
-    $zbp->LoadCategorys();
+    $zbp->LoadCategories();
     $zbp->AddBuildModule('catalog');
 
     if (GetVars('AddNavbar', 'POST') == 0) {
@@ -2092,17 +2349,20 @@ function PostCategory() {
 }
 
 /**
- * 删除分类
+ * 删除分类.
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function DelCategory() {
+function DelCategory()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
     $cate = $zbp->GetCategoryByID($id);
     if ($cate->ID > 0) {
-
-        if(count($cate->SubCategories) > 0){
+        if (count($cate->SubCategories) > 0) {
             $zbp->ShowError(49, __FILE__, __LINE__);
 
             return false;
@@ -2111,7 +2371,7 @@ function DelCategory() {
         DelCategory_Articles($cate->ID);
         $cate->Del();
 
-        $zbp->LoadCategorys();
+        $zbp->LoadCategories();
         $zbp->AddBuildModule('catalog');
         $zbp->DelItemToNavbar('category', $cate->ID);
 
@@ -2124,29 +2384,33 @@ function DelCategory() {
 }
 
 /**
- * 删除分类下所有文章
+ * 删除分类下所有文章.
+ *
  * @param int $id 分类ID
  */
-function DelCategory_Articles($id) {
+function DelCategory_Articles($id)
+{
     global $zbp;
 
     $sql = $zbp->db->sql->Update($zbp->table['Post'], array('log_CateID' => 0), array(array('=', 'log_CateID', $id)));
     $zbp->db->Update($sql);
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交标签数据
+ * 提交标签数据.
+ *
  * @return bool
  */
-function PostTag() {
+function PostTag()
+{
     global $zbp;
     if (!isset($_POST['ID'])) {
-        return;
+        return false;
     }
 
     if (isset($_POST['Alias'])) {
-        $_POST['Alias'] = TransferHTML($_POST['Alias'], '[noscript]');
+        $_POST['Alias'] = FormatString($_POST['Alias'], '[noscript]');
     }
 
     $tag = new Tag();
@@ -2156,7 +2420,9 @@ function PostTag() {
     }
 
     foreach ($zbp->datainfo['Tag'] as $key => $value) {
-        if ($key == 'ID' || $key == 'Meta') {continue;}
+        if ($key == 'ID' || $key == 'Meta') {
+            continue;
+        }
         if (isset($_POST[$key])) {
             $tag->$key = GetVars($key, 'POST');
         }
@@ -2194,10 +2460,12 @@ function PostTag() {
 }
 
 /**
- * 删除标签
+ * 删除标签.
+ *
  * @return bool
  */
-function DelTag() {
+function DelTag()
+{
     global $zbp;
 
     $tagid = (int) GetVars('id', 'GET');
@@ -2214,12 +2482,16 @@ function DelTag() {
     return true;
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交用户数据
+ * 提交用户数据.
+ *
+ * @throws Exception
+ *
  * @return bool
  */
-function PostMember() {
+function PostMember()
+{
     global $zbp;
     $mem = new Member();
 
@@ -2230,7 +2502,7 @@ function PostMember() {
     }
 
     //检测密码
-    if(trim($_POST["Password"]) == '' || trim($_POST["PasswordRe"]) == '' || $_POST["Password"] != $_POST["PasswordRe"]){
+    if (trim($_POST["Password"]) == '' || trim($_POST["PasswordRe"]) == '' || $_POST["Password"] != $_POST["PasswordRe"]) {
         unset($_POST["Password"]);
         unset($_POST["PasswordRe"]);
     }
@@ -2252,15 +2524,14 @@ function PostMember() {
 
     if (isset($data['Name'])) {
         // 检测同名
-        if (isset($zbp->membersbyname[$data['Name']])) {
-            if ($zbp->membersbyname[$data['Name']]->ID != $data['ID']) {
-                $zbp->ShowError(62, __FILE__, __LINE__);
-            }
+        $m = $zbp->GetMemberByName($data['Name']);
+        if ($m->ID > 0 && $m->ID != $data['ID']) {
+            $zbp->ShowError(62, __FILE__, __LINE__);
         }
     }
 
     if (isset($data['Alias'])) {
-        $data['Alias'] = TransferHTML($data['Alias'], '[noscript]');
+        $data['Alias'] = FormatString($data['Alias'], '[noscript]');
     }
 
     if ($data['ID'] == 0) {
@@ -2268,7 +2539,9 @@ function PostMember() {
             $zbp->ShowError(73, __FILE__, __LINE__);
         }
         $data['IP'] = GetGuestIP();
-        if ($mem->Guid == '') $mem->Guid = GetGuid();
+        if ($mem->Guid == '') {
+            $mem->Guid = GetGuid();
+        }
     } else {
         $mem->LoadInfoByID($data['ID']);
     }
@@ -2325,7 +2598,9 @@ function PostMember() {
 
     if (isset($data['Password'])) {
         if ($mem->ID == $zbp->user->ID) {
-            Redirect($zbp->host . 'zb_system/cmd.php?act=login');
+            if (!defined('IN_AJAX_PROCESSING') || constant('IN_AJAX_PROCESSING') != true) {
+                Redirect($zbp->host . 'zb_system/cmd.php?act=login');
+            }
         }
     }
 
@@ -2333,10 +2608,12 @@ function PostMember() {
 }
 
 /**
- * 删除用户
+ * 删除用户.
+ *
  * @return bool
  */
-function DelMember() {
+function DelMember()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
@@ -2357,15 +2634,18 @@ function DelMember() {
 }
 
 /**
- * 删除用户下所有数据（包括文章、评论、附件）
+ * 删除用户下所有数据（包括文章、评论、附件）.
+ *
  * @param int $id 用户ID
  */
-function DelMember_AllData($id) {
+function DelMember_AllData($id)
+{
     global $zbp;
 
     $w = array();
     $w[] = array('=', 'log_AuthorID', $id);
 
+    /** @var Post[] $articles */
     $articles = $zbp->GetPostList('*', $w);
     foreach ($articles as $a) {
         $a->Del();
@@ -2373,6 +2653,7 @@ function DelMember_AllData($id) {
 
     $w = array();
     $w[] = array('=', 'comm_AuthorID', $id);
+    /** @var Comment[] $comments */
     $comments = $zbp->GetCommentList('*', $w);
     foreach ($comments as $c) {
         $c->AuthorID = 0;
@@ -2381,20 +2662,22 @@ function DelMember_AllData($id) {
 
     $w = array();
     $w[] = array('=', 'ul_AuthorID', $id);
+    /** @var Upload[] $uploads */
     $uploads = $zbp->GetUploadList('*', $w);
     foreach ($uploads as $u) {
         $u->Del();
         $u->DelFile();
     }
-
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 提交模块数据
+ * 提交模块数据.
+ *
  * @return bool
  */
-function PostModule() {
+function PostModule()
+{
     global $zbp;
 
     if (isset($_POST['catalog_style'])) {
@@ -2402,8 +2685,17 @@ function PostModule() {
         $zbp->SaveOption();
     }
 
+    if ($_POST['FileName'] == 'archives') {
+        if (isset($_POST['archives_style'])) {
+            $zbp->option['ZC_MODULE_ARCHIVES_STYLE'] = 1;
+        } else {
+            $zbp->option['ZC_MODULE_ARCHIVES_STYLE'] = 0;
+        }
+        $zbp->SaveOption();
+    }
+
     if (!isset($_POST['ID'])) {
-        return;
+        return false;
     }
 
     if (!GetVars('FileName', 'POST')) {
@@ -2415,10 +2707,10 @@ function PostModule() {
         $_POST['HtmlID'] = $_POST['FileName'];
     }
     if (isset($_POST['MaxLi'])) {
-        $_POST['MaxLi'] = (integer) $_POST['MaxLi'];
+        $_POST['MaxLi'] = (int) $_POST['MaxLi'];
     }
     if (isset($_POST['IsHideTitle'])) {
-        $_POST['IsHideTitle'] = (integer) $_POST['IsHideTitle'];
+        $_POST['IsHideTitle'] = (int) $_POST['IsHideTitle'];
     }
     if (!isset($_POST['Type'])) {
         $_POST['Type'] = 'div';
@@ -2428,14 +2720,14 @@ function PostModule() {
             $_POST['Content'] = str_replace(array("\r", "\n"), array('', ''), $_POST['Content']);
         }
     }
-    if (isset($_POST['Source'])) {
 
-    }
-
+    /** @var Module $mod */
     $mod = $zbp->GetModuleByID(GetVars('ID', 'POST'));
 
     foreach ($zbp->datainfo['Module'] as $key => $value) {
-        if ($key == 'ID' || $key == 'Meta') {continue;}
+        if ($key == 'ID' || $key == 'Meta') {
+            continue;
+        }
         if (isset($_POST[$key])) {
             $mod->$key = GetVars($key, 'POST');
         }
@@ -2455,8 +2747,9 @@ function PostModule() {
 
     $mod->Save();
 
-    if( (int)GetVars('ID', 'POST') > 0 )
+    if ((int) GetVars('ID', 'POST') > 0) {
         $zbp->AddBuildModule($mod->FileName);
+    }
 
     foreach ($GLOBALS['hooks']['Filter_Plugin_PostModule_Succeed'] as $fpname => &$fpsignal) {
         $fpname($mod);
@@ -2466,10 +2759,12 @@ function PostModule() {
 }
 
 /**
- * 删除模块
+ * 删除模块.
+ *
  * @return bool
  */
-function DelModule() {
+function DelModule()
+{
     global $zbp;
 
     if (GetVars('source', 'GET') == 'theme') {
@@ -2505,17 +2800,20 @@ function DelModule() {
     return true;
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 附件上传
+ * 附件上传.
+ *
+ * @throws Exception
  */
-function PostUpload() {
+function PostUpload()
+{
     global $zbp;
 
     foreach ($_FILES as $key => $value) {
         if ($_FILES[$key]['error'] == 0) {
             if (is_uploaded_file($_FILES[$key]['tmp_name'])) {
-                $upload = new Upload;
+                $upload = new Upload();
                 $upload->Name = $_FILES[$key]['name'];
                 if (GetVars('auto_rename', 'POST') == 'on' || GetVars('auto_rename', 'POST') == true) {
                     $temp_arr = explode(".", $upload->Name);
@@ -2527,7 +2825,6 @@ function PostUpload() {
                 $upload->Size = $_FILES[$key]['size'];
                 $upload->AuthorID = $zbp->user->ID;
 
-
                 //检查同月重名
                 $d1 = date('Y-m-01', time());
                 $d2 = date('Y-m-d', strtotime(date('Y-m-01', time()) . ' +1 month -1 day'));
@@ -2538,7 +2835,7 @@ function PostUpload() {
                 $w[] = array('>=', 'ul_PostTime', $d1);
                 $w[] = array('<=', 'ul_PostTime', $d2);
                 $uploads = $zbp->GetUploadList('*', $w);
-                if(count($uploads) > 0){
+                if (count($uploads) > 0) {
                     $zbp->ShowError(28, __FILE__, __LINE__);
                 }
 
@@ -2558,14 +2855,15 @@ function PostUpload() {
     if (isset($upload)) {
         CountMemberArray(array($upload->AuthorID), array(0, 0, 0, +1));
     }
-
 }
 
 /**
- * 删除附件
+ * 删除附件.
+ *
  * @return bool
  */
-function DelUpload() {
+function DelUpload()
+{
     global $zbp;
 
     $id = (int) GetVars('id', 'GET');
@@ -2581,13 +2879,18 @@ function DelUpload() {
     return true;
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 启用插件
+ * 启用插件.
+ *
  * @param string $name 插件ID
+ *
+ * @throws Exception
+ *
  * @return string 返回插件ID
  */
-function EnablePlugin($name) {
+function EnablePlugin($name)
+{
     global $zbp;
 
     $app = $zbp->LoadApp('plugin', $name);
@@ -2601,7 +2904,6 @@ function EnablePlugin($name) {
         if (is_readable($zbp->usersdir . 'plugin/' . $p . '/plugin.xml')) {
             $arrayhas[] = $p;
         }
-
     }
 
     $zbp->option['ZC_USING_PLUGIN_LIST'] = trim(implode('|', $arrayhas), '|');
@@ -2612,11 +2914,31 @@ function EnablePlugin($name) {
 }
 
 /**
- * 禁用插件
+ * 禁用插件.
+ *
  * @param string $name 插件ID
+ *
+ * @return App|bool
  */
-function DisablePlugin($name) {
+function DisablePlugin($name)
+{
     global $zbp;
+
+    $apps = $zbp->LoadPlugins();
+    $apps[] = $zbp->LoadApp('theme', $zbp->theme);
+    foreach ($apps as $app) {
+        if (!$zbp->CheckApp($app->id)) {
+            continue;
+        }
+        $dependList = explode('|', $app->advanced_dependency);
+        foreach ($dependList as $depend) {
+            if ($depend == $name) {
+                return $app;
+            }
+        }
+    }
+
+    UninstallPlugin($name);
     $zbp->option['ZC_USING_PLUGIN_LIST'] = DelNameInString($zbp->option['ZC_USING_PLUGIN_LIST'], $name);
 
     $array = explode('|', $zbp->option['ZC_USING_PLUGIN_LIST']);
@@ -2625,93 +2947,81 @@ function DisablePlugin($name) {
         if (is_readable($zbp->usersdir . 'plugin/' . $p . '/plugin.xml')) {
             $arrayhas[] = $p;
         }
-
     }
 
     $zbp->option['ZC_USING_PLUGIN_LIST'] = trim(implode('|', $arrayhas), '|');
 
     $zbp->SaveOption();
+
+    return true;
 }
 
 /**
- * 设置当前主题样式
+ * 设置当前主题样式.
+ *
  * @param string $theme 主题ID
  * @param string $style 样式名
+ *
+ * @throws Exception
+ *
  * @return string 返回主题ID
  */
-function SetTheme($theme, $style) {
+function SetTheme($theme, $style)
+{
     global $zbp;
 
     $app = $zbp->LoadApp('theme', $theme);
     $app->CheckCompatibility();
 
-    $oldtheme = $zbp->option['ZC_BLOG_THEME'];
-
-    if ($oldtheme != $theme) {
-        if ($app->sidebars_sidebar1 | $app->sidebars_sidebar2 | $app->sidebars_sidebar3 | $app->sidebars_sidebar4 | $app->sidebars_sidebar5) {
-            $s1 = $zbp->option['ZC_SIDEBAR_ORDER'];
-            $s2 = $zbp->option['ZC_SIDEBAR2_ORDER'];
-            $s3 = $zbp->option['ZC_SIDEBAR3_ORDER'];
-            $s4 = $zbp->option['ZC_SIDEBAR4_ORDER'];
-            $s5 = $zbp->option['ZC_SIDEBAR5_ORDER'];
-            $zbp->option['ZC_SIDEBAR_ORDER'] = $app->sidebars_sidebar1;
-            $zbp->option['ZC_SIDEBAR2_ORDER'] = $app->sidebars_sidebar2;
-            $zbp->option['ZC_SIDEBAR3_ORDER'] = $app->sidebars_sidebar3;
-            $zbp->option['ZC_SIDEBAR4_ORDER'] = $app->sidebars_sidebar4;
-            $zbp->option['ZC_SIDEBAR5_ORDER'] = $app->sidebars_sidebar5;
-            $zbp->cache->zc_sidebar_order1 = $s1;
-            $zbp->cache->zc_sidebar_order2 = $s2;
-            $zbp->cache->zc_sidebar_order3 = $s3;
-            $zbp->cache->zc_sidebar_order4 = $s4;
-            $zbp->cache->zc_sidebar_order5 = $s5;
-        } else {
-            if ($zbp->cache->zc_sidebar_order1 | $zbp->cache->zc_sidebar_order2 | $zbp->cache->zc_sidebar_order3 | $zbp->cache->zc_sidebar_order4 | $zbp->cache->zc_sidebar_order5) {
-                $zbp->option['ZC_SIDEBAR_ORDER'] = $zbp->cache->zc_sidebar_order1;
-                $zbp->option['ZC_SIDEBAR2_ORDER'] = $zbp->cache->zc_sidebar_order2;
-                $zbp->option['ZC_SIDEBAR3_ORDER'] = $zbp->cache->zc_sidebar_order3;
-                $zbp->option['ZC_SIDEBAR4_ORDER'] = $zbp->cache->zc_sidebar_order4;
-                $zbp->option['ZC_SIDEBAR5_ORDER'] = $zbp->cache->zc_sidebar_order5;
-                $zbp->cache->zc_sidebar_order1 = '';
-                $zbp->cache->zc_sidebar_order2 = '';
-                $zbp->cache->zc_sidebar_order3 = '';
-                $zbp->cache->zc_sidebar_order4 = '';
-                $zbp->cache->zc_sidebar_order5 = '';
-            }
-        }
-
+    $oldTheme = $zbp->option['ZC_BLOG_THEME'];
+    $old = $zbp->LoadApp('theme', $oldTheme);
+    if ($theme != $oldTheme && $old->isloaded == true) {
+        $old->SaveSideBars();
     }
 
     $zbp->option['ZC_BLOG_THEME'] = $theme;
     $zbp->option['ZC_BLOG_CSS'] = $style;
-
-    $zbp->SaveOption();
-
-    if ($oldtheme != $theme) {
-        UninstallPlugin($oldtheme);
-
-        return $theme;
+    if ($theme != $oldTheme) {
+        $app->LoadSideBars();
+    } else {
+        $app->SaveSideBars();
     }
+
+    $zbp->SaveOption();
+
+    if ($oldTheme != $theme) {
+        UninstallPlugin($oldTheme);
+    }
+
+    return $theme;
 }
 
 /**
- * 设置侧栏
+ * 设置侧栏.
  */
-function SetSidebar() {
+function SetSidebar()
+{
     global $zbp;
-
-    $zbp->option['ZC_SIDEBAR_ORDER'] = trim(GetVars('sidebar', 'POST'), '|');
-    $zbp->option['ZC_SIDEBAR2_ORDER'] = trim(GetVars('sidebar2', 'POST'), '|');
-    $zbp->option['ZC_SIDEBAR3_ORDER'] = trim(GetVars('sidebar3', 'POST'), '|');
-    $zbp->option['ZC_SIDEBAR4_ORDER'] = trim(GetVars('sidebar4', 'POST'), '|');
-    $zbp->option['ZC_SIDEBAR5_ORDER'] = trim(GetVars('sidebar5', 'POST'), '|');
+    // @TODO: 将此处的9常量化
+    for ($i = 1; $i <= 9; $i++) {
+        $optionName = $i === 1 ? 'ZC_SIDEBAR_ORDER' : "ZC_SIDEBAR${i}_ORDER";
+        $formName = $i === 1 ? 'sidebar' : "sidebar${i}";
+        $zbp->option[$optionName] = trim(GetVars($formName, 'POST'), '|');
+    }
     $zbp->SaveOption();
 }
 
 /**
- * 保存网站设置选项
+ * 保存网站设置选项.
+ *
+ * @throws Exception
  */
-function SaveSetting() {
+function SaveSetting()
+{
     global $zbp;
+
+    $oldZC_PERMANENT_DOMAIN_ENABLE = $zbp->option['ZC_PERMANENT_DOMAIN_ENABLE'];
+    $oldHost = $zbp->option['ZC_BLOG_HOST'];
 
     foreach ($_POST as $key => $value) {
         if (substr($key, 0, 2) !== 'ZC') {
@@ -2727,9 +3037,9 @@ function SaveSetting() {
             $key == 'ZC_SYNTAXHIGHLIGHTER_ENABLE' ||
             $key == 'ZC_COMMENT_VERIFY_ENABLE' ||
             $key == 'ZC_CLOSE_SITE' ||
-            $key == 'ZC_PERMANENT_DOMAIN_WITH_ADMIN'
+            $key == 'ZC_ADDITIONAL_SECURITY'
         ) {
-            $zbp->option[$key] = (boolean) $value;
+            $zbp->option[$key] = (bool) $value;
             continue;
         }
         if ($key == 'ZC_RSS2_COUNT' ||
@@ -2740,11 +3050,12 @@ function SaveSetting() {
             $key == 'ZC_COMMENTS_DISPLAY_COUNT' ||
             $key == 'ZC_MANAGE_COUNT'
         ) {
-            $zbp->option[$key] = (integer) $value;
+            $zbp->option[$key] = (int) $value;
             continue;
         }
         if ($key == 'ZC_UPLOAD_FILETYPE') {
             $value = strtolower($value);
+            $value = str_replace(array(' ','　'), '', $value);
             $value = DelNameInString($value, 'php');
             $value = DelNameInString($value, 'asp');
         }
@@ -2761,8 +3072,7 @@ function SaveSetting() {
         }
         $zbp->option[$key] = trim(str_replace(array("\r", "\n"), array("", ""), $value));
     }
-
-
+    $zbp->option['ZC_DEBUG_MODE'] = (bool) $zbp->option['ZC_DEBUG_MODE'];
     $zbp->option['ZC_BLOG_HOST'] = trim($zbp->option['ZC_BLOG_HOST']);
     $zbp->option['ZC_BLOG_HOST'] = trim($zbp->option['ZC_BLOG_HOST'], '/') . '/';
     if ($zbp->option['ZC_BLOG_HOST'] == '/') {
@@ -2771,7 +3081,9 @@ function SaveSetting() {
     $usePC = false;
     for ($i = 0; $i < strlen($zbp->option['ZC_BLOG_HOST']) - 1; $i++) {
         $l = substr($zbp->option['ZC_BLOG_HOST'], $i, 1);
-        if(ord($l) >= 192) $usePC = true;
+        if (ord($l) >= 192) {
+            $usePC = true;
+        }
     }
     if ($usePC && function_exists('mb_strtolower')) {
         $Punycode = new Punycode();
@@ -2781,14 +3093,24 @@ function SaveSetting() {
     $zbp->option['ZC_BLOG_LANGUAGE'] = $lang['lang'];
     $zbp->option['ZC_BLOG_PRODUCT'] = 'Z-BlogPHP';
     $zbp->SaveOption();
+
+    if ($zbp->option['ZC_PERMANENT_DOMAIN_ENABLE'] == 1) {
+        if ($oldHost != $zbp->option['ZC_BLOG_HOST']) {
+            if (!defined('IN_AJAX_PROCESSING') || constant('IN_AJAX_PROCESSING') != true) {
+                Redirect($zbp->option['ZC_BLOG_HOST'] . 'zb_system/cmd.php?act=login');
+            }
+        }
+    }
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 过滤扩展数据
+ * 过滤扩展数据.
+ *
  * @param $object
  */
-function FilterMeta(&$object) {
+function FilterMeta(&$object)
+{
 
     //$type=strtolower(get_class($object));
 
@@ -2803,16 +3125,18 @@ function FilterMeta(&$object) {
         if ($value == '') {
             $object->Metas->Del($key);
         }
-
     }
-
 }
 
 /**
- * 过滤评论数据
+ * 过滤评论数据.
+ *
  * @param $comment
+ *
+ * @throws Exception
  */
-function FilterComment(&$comment) {
+function FilterComment(&$comment)
+{
     global $zbp;
 
     if (!CheckRegExp($comment->Name, '[username]')) {
@@ -2829,7 +3153,7 @@ function FilterComment(&$comment) {
     $comment->Email = SubStrUTF8_Start($comment->Email, 0, $zbp->option['ZC_EMAIL_MAX']);
     $comment->HomePage = SubStrUTF8_Start($comment->HomePage, 0, $zbp->option['ZC_HOMEPAGE_MAX']);
 
-    $comment->Content = TransferHTML($comment->Content, '[nohtml]');
+    $comment->Content = FormatString($comment->Content, '[nohtml]');
 
     $comment->Content = SubStrUTF8_Start($comment->Content, 0, 1000);
     $comment->Content = trim($comment->Content);
@@ -2839,43 +3163,49 @@ function FilterComment(&$comment) {
 }
 
 /**
- * 过滤文章数据
+ * 过滤文章数据.
+ *
  * @param $article
  */
-function FilterPost(&$article) {
+function FilterPost(&$article)
+{
     global $zbp;
 
     $article->Title = strip_tags($article->Title);
     $article->Title = htmlspecialchars($article->Title);
-    $article->Alias = TransferHTML($article->Alias, '[normalname]');
+    $article->Alias = FormatString($article->Alias, '[normalname]');
     $article->Alias = str_replace(' ', '', $article->Alias);
 
     if ($article->Type == ZC_POST_TYPE_ARTICLE) {
         if (!$zbp->CheckRights('ArticleAll')) {
-            $article->Content = TransferHTML($article->Content, '[noscript]');
-            $article->Intro = TransferHTML($article->Intro, '[noscript]');
+            $article->Content = FormatString($article->Content, '[noscript]');
+            $article->Intro = FormatString($article->Intro, '[noscript]');
         }
     } elseif ($article->Type == ZC_POST_TYPE_PAGE) {
         if (!$zbp->CheckRights('PageAll')) {
-            $article->Content = TransferHTML($article->Content, '[noscript]');
-            $article->Intro = TransferHTML($article->Intro, '[noscript]');
+            $article->Content = FormatString($article->Content, '[noscript]');
+            $article->Intro = FormatString($article->Intro, '[noscript]');
         }
     } else {
         if (!$zbp->CheckRights('ArticleAll')) {
-            $article->Content = TransferHTML($article->Content, '[noscript]');
-            $article->Intro = TransferHTML($article->Intro, '[noscript]');
+            $article->Content = FormatString($article->Content, '[noscript]');
+            $article->Intro = FormatString($article->Intro, '[noscript]');
         }
     }
 }
 
 /**
- * 过滤用户数据
+ * 过滤用户数据.
+ *
  * @param $member
+ *
+ * @throws Exception
  */
-function FilterMember(&$member) {
+function FilterMember(&$member)
+{
     global $zbp;
-    $member->Intro = TransferHTML($member->Intro, '[noscript]');
-    $member->Alias = TransferHTML($member->Alias, '[normalname]');
+    $member->Intro = FormatString($member->Intro, '[noscript]');
+    $member->Alias = FormatString($member->Alias, '[normalname]');
     $member->Alias = str_replace('/', '', $member->Alias);
     $member->Alias = str_replace('.', '', $member->Alias);
     $member->Alias = str_replace(' ', '', $member->Alias);
@@ -2896,6 +3226,7 @@ function FilterMember(&$member) {
     if (!CheckRegExp($member->Email, '[email]')) {
         $member->Email = 'null@null.com';
     }
+    $member->Email = strtolower($member->Email);
 
     if (substr($member->HomePage, 0, 4) != 'http') {
         $member->HomePage = 'http://' . $member->HomePage;
@@ -2912,27 +3243,30 @@ function FilterMember(&$member) {
     if (strlen($member->HomePage) > $zbp->option['ZC_HOMEPAGE_MAX']) {
         $zbp->ShowError(30, __FILE__, __LINE__);
     }
-
 }
 
 /**
- * 过滤模块数据
+ * 过滤模块数据.
+ *
  * @param $module
  */
-function FilterModule(&$module) {
+function FilterModule(&$module)
+{
     global $zbp;
-    $module->FileName = TransferHTML($module->FileName, '[filename]');
-    $module->HtmlID = TransferHTML($module->HtmlID, '[normalname]');
+    $module->FileName = FormatString($module->FileName, '[filename]');
+    $module->HtmlID = FormatString($module->HtmlID, '[normalname]');
 }
 
 /**
- * 过滤分类数据
+ * 过滤分类数据.
+ *
  * @param $category
  */
-function FilterCategory(&$category) {
+function FilterCategory(&$category)
+{
     global $zbp;
     $category->Name = strip_tags($category->Name);
-    $category->Alias = TransferHTML($category->Alias, '[normalname]');
+    $category->Alias = FormatString($category->Alias, '[normalname]');
     //$category->Alias=str_replace('/','',$category->Alias);
     $category->Alias = str_replace('.', '', $category->Alias);
     $category->Alias = str_replace(' ', '', $category->Alias);
@@ -2940,31 +3274,37 @@ function FilterCategory(&$category) {
 }
 
 /**
- * 过滤tag数据
+ * 过滤tag数据.
+ *
  * @param $tag
  */
-function FilterTag(&$tag) {
+function FilterTag(&$tag)
+{
     global $zbp;
     $tag->Name = strip_tags($tag->Name);
-    $tag->Alias = TransferHTML($tag->Alias, '[normalname]');
+    $tag->Alias = FormatString($tag->Alias, '[normalname]');
 }
 
-################################################################################################################
-#统计函数
+//###############################################################################################################
+//统计函数
 /**
- *统计置顶文章数组
- * @param int $plus 控制是否要进行全表扫描
+ *统计置顶文章数组.
+ *
+ * @param int  $type
+ * @param null $addplus
+ * @param null $delplus
  */
-function CountTopArticle($addplus = null, $delplus = null) {
+function CountTopArticle($type = 0, $addplus = null, $delplus = null)
+{
     global $zbp;
-
-    $array = unserialize($zbp->cache->top_post_array);
+    $varname = 'top_post_array_' . $type;
+    $array = unserialize($zbp->cache->$varname);
     if (!is_array($array)) {
         $array = array();
     }
 
     if ($addplus === null && $delplus === null) {
-        $s = $zbp->db->sql->Select($zbp->table['Post'], 'log_ID', array(array('=', 'log_Type', 0), array('=', 'log_IsTop', 1), array('=', 'log_Status', 0)), null, null, null);
+        $s = $zbp->db->sql->Select($zbp->table['Post'], 'log_ID', array(array('=', 'log_Type', $type), array('>', 'log_IsTop', 0), array('=', 'log_Status', 0)), null, null, null);
         $a = $zbp->db->Query($s);
         foreach ($a as $id) {
             $array[(int) current($id)] = (int) current($id);
@@ -2977,15 +3317,17 @@ function CountTopArticle($addplus = null, $delplus = null) {
         unset($array[$delplus]);
     }
 
-    $zbp->cache->top_post_array = serialize($array);
+    $zbp->cache->$varname = serialize($array);
 }
 
 /**
- *统计评论数
+ *统计评论数.
+ *
  * @param int $allplus 控制是否要进行全表扫描 总评论
  * @param int $chkplus 控制是否要进行全表扫描 未审核评论
  */
-function CountCommentNums($allplus = null, $chkplus = null) {
+function CountCommentNums($allplus = null, $chkplus = null)
+{
     global $zbp;
 
     if ($allplus === null) {
@@ -3002,10 +3344,12 @@ function CountCommentNums($allplus = null, $chkplus = null) {
 }
 
 /**
- *统计公开文章数
+ *统计公开文章数.
+ *
  * @param int $plus 控制是否要进行全表扫描
  */
-function CountNormalArticleNums($plus = null) {
+function CountNormalArticleNums($plus = null)
+{
     global $zbp;
 
     if ($plus === null) {
@@ -3019,11 +3363,13 @@ function CountNormalArticleNums($plus = null) {
 }
 
 /**
- * 统计文章下评论数
+ * 统计文章下评论数.
+ *
  * @param post $article
- * @param int $plus 控制是否要进行全表扫描
+ * @param int  $plus    控制是否要进行全表扫描
  */
-function CountPost(&$article, $plus = null) {
+function CountPost(&$article, $plus = null)
+{
     global $zbp;
 
     if ($plus === null) {
@@ -3039,11 +3385,13 @@ function CountPost(&$article, $plus = null) {
 }
 
 /**
- * 批量统计指定文章下评论数并保存
+ * 批量统计指定文章下评论数并保存.
+ *
  * @param array $array 记录文章ID的数组
- * @param int $plus 控制是否要进行全表扫描
+ * @param int   $plus  控制是否要进行全表扫描
  */
-function CountPostArray($array, $plus = null) {
+function CountPostArray($array, $plus = null)
+{
     global $zbp;
     $array = array_unique($array);
     foreach ($array as $value) {
@@ -3060,11 +3408,13 @@ function CountPostArray($array, $plus = null) {
 }
 
 /**
- * 统计分类下文章数
- * @param category &$category
- * @param int $plus 控制是否要进行全表扫描
+ * 统计分类下文章数.
+ *
+ * @param Category &$category
+ * @param int      $plus      控制是否要进行全表扫描
  */
-function CountCategory(&$category, $plus = null) {
+function CountCategory(&$category, $plus = null)
+{
     global $zbp;
 
     if ($plus === null) {
@@ -3080,11 +3430,13 @@ function CountCategory(&$category, $plus = null) {
 }
 
 /**
- * 批量统计指定分类下文章数并保存
+ * 批量统计指定分类下文章数并保存.
+ *
  * @param array $array 记录分类ID的数组
- * @param int $plus 控制是否要进行全表扫描
+ * @param int   $plus  控制是否要进行全表扫描
  */
-function CountCategoryArray($array, $plus = null) {
+function CountCategoryArray($array, $plus = null)
+{
     global $zbp;
     $array = array_unique($array);
     foreach ($array as $value) {
@@ -3098,11 +3450,13 @@ function CountCategoryArray($array, $plus = null) {
 }
 
 /**
- * 统计tag下的文章数
+ * 统计tag下的文章数.
+ *
  * @param tag &$tag
  * @param int $plus 控制是否要进行全表扫描
  */
-function CountTag(&$tag, $plus = null) {
+function CountTag(&$tag, $plus = null)
+{
     global $zbp;
 
     if ($plus === null) {
@@ -3118,12 +3472,17 @@ function CountTag(&$tag, $plus = null) {
 }
 
 /**
- * 批量统计指定tag下文章数并保存
+ * 批量统计指定tag下文章数并保存.
+ *
  * @param string $string 类似'{1}{2}{3}{4}{4}'的tagID串
- * @param int $plus 控制是否要进行全表扫描
+ * @param int    $plus   控制是否要进行全表扫描
+ *
+ * @return bool
  */
-function CountTagArrayString($string, $plus = null, $articleid = null) {
+function CountTagArrayString($string, $plus = null, $articleid = null)
+{
     global $zbp;
+    /** @var Tag[] $array */
     $array = $zbp->LoadTagsByIDString($string);
 
     //添加大数据接口,tag,plus,id
@@ -3137,17 +3496,21 @@ function CountTagArrayString($string, $plus = null, $articleid = null) {
     }
 
     foreach ($array as &$tag) {
-        CountTag($tag, $plus, $articleid);
+        CountTag($tag, $plus);
         $tag->Save();
     }
+
+    return true;
 }
 
 /**
- * 统计用户下的文章数、页面数、评论数、附件数等
+ * 统计用户下的文章数、页面数、评论数、附件数等.
+ *
  * @param $member
  * @param array $plus 设置是否需要完全全表扫描
  */
-function CountMember(&$member, $plus = array(null, null, null, null)) {
+function CountMember(&$member, $plus = array(null, null, null, null))
+{
     global $zbp;
     if (!($member instanceof Member)) {
         return;
@@ -3172,8 +3535,8 @@ function CountMember(&$member, $plus = array(null, null, null, null)) {
     }
 
     if ($plus[2] === null) {
-        if ($member->ID > 0){
-            $s = $zbp->db->sql->Count($zbp->table['Comment'], array(array('COUNT', '*', 'num')), array(array('=', 'comm_AuthorID', $id)));
+        if ($member->ID > 0) {
+            $s = $zbp->db->sql->Count($zbp->table['Comment'], array(array('COUNT', '*', 'num')), array(array('=', 'comm_AuthorID', $id), array('=', 'comm_IsChecking', 0)));
             $member_Comments = GetValueInArrayByCurrent($zbp->db->Query($s), 'num');
             $member->Comments = $member_Comments;
         }
@@ -3188,15 +3551,16 @@ function CountMember(&$member, $plus = array(null, null, null, null)) {
     } else {
         $member->Uploads += $plus[3];
     }
-
 }
 
 /**
- * 批量统计指定用户数据并保存
+ * 批量统计指定用户数据并保存.
+ *
  * @param array $array 记录用户ID的数组
- * @param array $plus 设置是否需要完全全表扫描
+ * @param array $plus  设置是否需要完全全表扫描
  */
-function CountMemberArray($array, $plus = array(null, null, null, null)) {
+function CountMemberArray($array, $plus = array(null, null, null, null))
+{
     global $zbp;
     $array = array_unique($array);
     foreach ($array as $value) {
@@ -3211,19 +3575,23 @@ function CountMemberArray($array, $plus = array(null, null, null, null)) {
     }
 }
 
-################################################################################################################
+//###############################################################################################################
 /**
- * 显示404页面(内置插件函数)
+ * 显示404页面(内置插件函数).
  *
  * 可通过主题中的404.php模板自定义显示效果
+ *
  * @api Filter_Plugin_Zbp_ShowError
+ *
  * @param $errorCode
  * @param $errorDescription
  * @param $file
  * @param $line
+ *
+ * @throws Exception
  */
-function Include_ShowError404($errorCode, $errorDescription, $file, $line) {
-
+function Include_ShowError404($errorCode, $errorDescription, $file, $line)
+{
     global $zbp;
     if (!in_array("Status: 404 Not Found", headers_list())) {
         return;
@@ -3233,14 +3601,14 @@ function Include_ShowError404($errorCode, $errorDescription, $file, $line) {
     $zbp->template->SetTemplate('404');
     $zbp->template->Display();
 
-    $GLOBALS['hooks']['Filter_Plugin_Zbp_ShowError']['ShowError404'] = PLUGIN_EXITSIGNAL_RETURN;
     exit;
 }
 
 /**
- * 输出后台指定字体family(内置插件函数)
+ * 输出后台指定字体family(内置插件函数).
  */
-function Include_AddonAdminFont() {
+function Include_AddonAdminFont()
+{
     global $zbp;
     $f = $s = '';
     if (isset($zbp->lang['font_family']) && trim($zbp->lang['font_family'])) {
@@ -3254,34 +3622,118 @@ function Include_AddonAdminFont() {
     if ($f || $s) {
         echo '<style type="text/css">body{' . $s . $f . '}</style>';
     }
-
 }
 
-// 兼容代码
-function BuildModule_catalog() {
+/**
+ * @deprecated
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_catalog()
+{
     return ModuleBuilder::Catalog();
 }
-function BuildModule_calendar($date = '') {
+
+/**
+ * @deprecated
+ *
+ * @param string $date
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_calendar($date = '')
+{
     return ModuleBuilder::Calendar($date);
 }
-function BuildModule_comments() {
+
+/**
+ * @deprecated
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_comments()
+{
     return ModuleBuilder::Comments();
 }
-function BuildModule_previous() {
+
+/**
+ * @deprecated
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_previous()
+{
     return ModuleBuilder::LatestArticles();
 }
-function BuildModule_archives() {
+
+/**
+ * @deprecated
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_archives()
+{
     return ModuleBuilder::Archives();
 }
-function BuildModule_navbar() {
+
+/**
+ * @deprecated
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_navbar()
+{
     return ModuleBuilder::Navbar();
 }
-function BuildModule_tags() {
+
+/**
+ * @deprecated
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_tags()
+{
     return ModuleBuilder::TagList();
 }
-function BuildModule_authors($level = 4) {
+
+/**
+ * @deprecated
+ *
+ * @param int $level
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_authors($level = 4)
+{
     return ModuleBuilder::Authors($level);
 }
-function BuildModule_statistics($array = array()) {
+
+/**
+ * @deprecated
+ *
+ * @param array $array
+ *
+ * @throws Exception
+ *
+ * @return string
+ */
+function BuildModule_statistics($array = array())
+{
     return ModuleBuilder::Statistics($array);
 }

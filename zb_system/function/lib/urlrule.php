@@ -1,12 +1,13 @@
 <?php
-/**
- * Url规则类
- *
- * @package Z-BlogPHP
- * @subpackage ClassLib 类库
- */
-class UrlRule {
 
+if (!defined('ZBP_PATH')) {
+    exit('Access denied');
+}
+/**
+ * Url规则类.
+ */
+class UrlRule
+{
     /**
      * @var array
      */
@@ -20,25 +21,33 @@ class UrlRule {
      * @var bool
      */
     public $MakeReplace = true;
+    /**
+     * @var bool
+     */
+    public $IsIndex = false; //指示是否为首页的规则
 
-    public static $categorylayer = '-1';
+    public static $categoryLayer = '-1';
 
     /**
      * @param $url
      */
-    public function __construct($url) {
+    public function __construct($url)
+    {
         $this->PreUrl = $url;
     }
 
     /**
      * @return string
      */
-    private function Make_Preg() {
+    private function Make_Preg()
+    {
         global $zbp;
 
         $this->Rules['{%host%}'] = $zbp->host;
         if (isset($this->Rules['{%page%}'])) {
-            if ($this->Rules['{%page%}'] == '1' || $this->Rules['{%page%}'] == '0') {$this->Rules['{%page%}'] = '';}
+            if ($this->Rules['{%page%}'] == '1' || $this->Rules['{%page%}'] == '0') {
+                $this->Rules['{%page%}'] = '';
+            }
         }
         $s = $this->PreUrl;
         foreach ($this->Rules as $key => $value) {
@@ -56,7 +65,8 @@ class UrlRule {
     /**
      * @return string
      */
-    private function Make_Replace() {
+    private function Make_Replace()
+    {
         global $zbp;
         $s = $this->PreUrl;
 
@@ -68,28 +78,37 @@ class UrlRule {
             $this->Rules['{%page%}'] = '';
         }
         if ($this->Rules['{%page%}'] == '') {
-            if (substr_count($s, '{%page%}') == 1 && substr_count($s, '{') == 2 && substr_count($s, '&') == 0) {
+            if ($this->IsIndex == true) {
+                //if (substr_count($s, '{%page%}') == 1 && substr_count($s, '{') == 2 && substr_count($s, '&') == 0) {
                 $s = $zbp->host;
             }
-            preg_match('/(?<=\})[^\{\}%\/&]+(?=\{%page%\})/i', $s, $matches);
-            if (isset($matches[0])) {
-                $s = str_replace($matches[0], '', $s);
+            if (stripos($s, '_{%page%}') !== false) {
+                $s = str_replace('_{%page%}', '{%page%}', $s);
+            } elseif (stripos($s, '/{%page%}') !== false) {
+                $s = str_replace('/{%page%}', '{%page%}', $s);
+            } elseif (stripos($s, '-{%page%}') !== false) {
+                $s = str_replace('-{%page%}', '{%page%}', $s);
             } else {
-                preg_match('/(?<=&)[^\{\}%\/&]+(?=\{%page%\})/i', $s, $matches);
+                preg_match('/(?<=\})[^\{\}%\/&]+(?=\{%page%\})/i', $s, $matches);
                 if (isset($matches[0])) {
                     $s = str_replace($matches[0], '', $s);
+                } else {
+                    preg_match('/(?<=&)[^\{\}%\/&]+(?=\{%page%\})/i', $s, $matches);
+                    if (isset($matches[0])) {
+                        $s = str_replace($matches[0], '', $s);
+                    }
                 }
             }
-            if (substr($this->PreUrl, -10) != '_{%page%}/' && substr($s, -9) == '{%page%}/') {
-                $s = substr($s, 0, strlen($s) - 1);
-            }
-
+            //if (substr($this->PreUrl, -10) != '_{%page%}/' && substr($s, -9) == '{%page%}/') {
+            //    $s = substr($s, 0, strlen($s) - 1);
+            //}
         }
 
         $this->Rules['{%host%}'] = $zbp->host;
         foreach ($this->Rules as $key => $value) {
-            if( !is_array($value) )
+            if (!is_array($value)) {
                 $s = str_replace($key, $value, $s);
+            }
         }
 
         if (substr($this->PreUrl, -1) != '/' && substr($s, -1) == '/' && $s != $zbp->host) {
@@ -107,7 +126,8 @@ class UrlRule {
     /**
      * @return string
      */
-    public function Make() {
+    public function Make()
+    {
         if ($this->MakeReplace) {
             return $this->Make_Replace();
         } else {
@@ -115,15 +135,15 @@ class UrlRule {
         }
     }
 
-
-
     /**
      * @param $url
      * @param $type
      * @param $haspage boolean
+     *
      * @return string
      */
-    public static function OutputUrlRegEx($url, $type, $haspage = false) {
+    public static function OutputUrlRegEx($url, $type, $haspage = false)
+    {
         global $zbp;
 
         $s = $url;
@@ -139,47 +159,57 @@ class UrlRule {
             $url = $url . '$';
             $url = str_replace('%poaogoe%', '(?P<page>[0-9]*)', $url);
         }
-        if ($type == 'cate' || $type == 'tags' || $type == 'date' || $type == 'auth') {
+        if ($type == 'cate' || $type == 'tags' || $type == 'date' || $type == 'auth' || $type == 'list') {
             $url = str_replace('%page%', '%poaogoe%', $url);
             preg_match('/(?<=\})[^\{\}]+(?=\{%poaogoe%\})/i', $s, $matches);
             if (isset($matches[0])) {
                 if ($haspage) {
                     //$url = str_replace($matches[0], '(?:' . $matches[0] . ')', $url);
                     $url = preg_replace('/(?<=\})[^\{\}]+(?=\{%poaogoe%\})/i', '(?:' . $matches[0] . ')', $url, 1);
-                }else{
+                } else {
                     //$url = str_replace($matches[0], '', $url);
-                    $url = preg_replace('/(?<=\})[^\{\}]+(?=\{%poaogoe%\})/i', '', $url, 1);
+                    if (stripos($url, '_{%poaogoe%}') !== false) {
+                        $url = str_replace('_{%poaogoe%}', '{%poaogoe%}', $url);
+                    } elseif (stripos($url, '/{%poaogoe%}') !== false) {
+                        $url = str_replace('/{%poaogoe%}', '{%poaogoe%}', $url);
+                    } elseif (stripos($url, '-{%poaogoe%}') !== false) {
+                        $url = str_replace('-{%poaogoe%}', '{%poaogoe%}', $url);
+                    } else {
+                        $url = preg_replace('/(?<=\})[^\{\}]+(?=\{%poaogoe%\})/i', '', $url, 1);
+                    }
                 }
             }
             $url = $url . '$';
             if ($haspage) {
-                    $url = str_replace('%poaogoe%', '(?P<page>[0-9]*)', $url);
-            }else{
-                    $url = str_replace('%poaogoe%', '', $url);
+                $url = str_replace('%poaogoe%', '(?P<page>[0-9]*)', $url);
+            } else {
+                $url = str_replace('%poaogoe%', '', $url);
             }
             $url = str_replace('%id%', '(?P<id>[0-9]+)', $url);
             $url = str_replace('%date%', '(?P<date>[0-9\-]+)', $url);
             if ($type == 'cate') {
-                if(UrlRule::$categorylayer == -1){
+                if (self::$categoryLayer == -1) {
                     foreach ($zbp->categorys as $c) {
-                        if($c->Level > UrlRule::$categorylayer && strpos($c->Alias,'/')!==false)
-                            UrlRule::$categorylayer = $c->Level;
+                        if ($c->Level > self::$categoryLayer && strpos($c->Alias, '/') !== false) {
+                            self::$categoryLayer = $c->Level;
+                        }
                     }
-                    if(UrlRule::$categorylayer == -1)
-                        UrlRule::$categorylayer = 0;
+                    if (self::$categoryLayer == -1) {
+                        self::$categoryLayer = 0;
+                    }
                 }
-                switch (UrlRule::$categorylayer) {
+                switch (self::$categoryLayer) {
                     case 3:
-                        $fullcategory='[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*|[^\./_]+/[^\./_]*/[^\./_]*/[^\./_]*';
+                        $fullcategory = '[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*|[^\./_]+/[^\./_]*/[^\./_]*/[^\./_]*';
                         break;
                     case 2:
-                        $fullcategory='[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*';
+                        $fullcategory = '[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*';
                         break;
                     case 1:
-                        $fullcategory='[^\./_]*|[^\./_]*/[^\./_]*';
+                        $fullcategory = '[^\./_]*|[^\./_]*/[^\./_]*';
                         break;
                     default:
-                        $fullcategory='[^\./_]*';
+                        $fullcategory = '[^\./_]*';
                         break;
                 }
                 $url = str_replace('%alias%', '(?P<alias>(' . $fullcategory . ')+?)', $url);
@@ -187,11 +217,11 @@ class UrlRule {
                 $url = str_replace('%alias%', '(?P<alias>[^\./_]+?)', $url);
             }
         }
-        if ($type == 'page' || $type == 'article') {
+        if ($type == 'page' || $type == 'article' || $type == 'post') {
             if (strpos($url, '%id%') !== false) {
                 $url = str_replace('%id%', '(?P<id>[0-9]+)', $url);
             }
-            if (strpos($url, '%alias%') !== false) {                
+            if (strpos($url, '%alias%') !== false) {
                 if ($type == 'article') {
                     $url = str_replace('%alias%', '(?P<alias>[^/]+)', $url);
                 } else {
@@ -201,7 +231,7 @@ class UrlRule {
             $url = $url . '$';
             if (version_compare(PHP_VERSION, '5.3.0') >= 0) {
                 $url = str_replace('%category%', '(?P<category>(([^\./_]*/?)<:1,4:>))', $url);
-            }else{
+            } else {
                 $url = str_replace('%category%', '(?P<category>(([^\./_]*/?)<:1,3:>))', $url);
             }
             $url = str_replace('%author%', '(?P<author>[^\./_]+)', $url);
@@ -214,8 +244,7 @@ class UrlRule {
         $url = str_replace('<:', '{', $url);
         $url = str_replace(':>', '}', $url);
         $url = str_replace('/', '\/', $url);
-        $url = str_replace('\/$', '$', $url);
-
+        //$url = str_replace('\/$', '$', $url);
 
         return '/(?J)' . $url . '/';
 
@@ -226,7 +255,8 @@ class UrlRule {
     /**
      * @return string
      */
-    public function Make_htaccess() {
+    public function Make_htaccess()
+    {
         global $zbp;
         $s = '<IfModule mod_rewrite.c>' . "\r\n";
         $s .= 'RewriteEngine On' . "\r\n";
@@ -243,7 +273,8 @@ class UrlRule {
     /**
      * @return string
      */
-    public function Make_webconfig() {
+    public function Make_webconfig()
+    {
         global $zbp;
 
         $s = '<?xml version="1.0" encoding="UTF-8"?>' . "\r\n";
@@ -281,7 +312,8 @@ class UrlRule {
     /**
      * @return string
      */
-    public function Make_nginx() {
+    public function Make_nginx()
+    {
         global $zbp;
         $s = '';
         $s .= 'if (-f $request_filename/index.html){' . "\r\n";
@@ -300,7 +332,8 @@ class UrlRule {
     /**
      * @return string
      */
-    public function Make_lighttpd() {
+    public function Make_lighttpd()
+    {
         global $zbp;
         $s = '';
 
@@ -329,7 +362,8 @@ class UrlRule {
     /**
      * @return string
      */
-    public function Make_httpdini() {
+    public function Make_httpdini()
+    {
         global $zbp;
 
         $s = '[ISAPI_Rewrite]' . "\r\n";
@@ -349,31 +383,35 @@ class UrlRule {
     /**
      * @param $url
      * @param $type
+     *
      * @return string
      */
-    public function Rewrite_httpdini($url, $type) {
+    public function Rewrite_httpdini($url, $type)
+    {
         global $zbp;
 
-        if(UrlRule::$categorylayer == -1){
+        if (self::$categoryLayer == -1) {
             foreach ($zbp->categorys as $c) {
-                if($c->Level > UrlRule::$categorylayer && strpos($c->Alias,'/')!==false)
-                    UrlRule::$categorylayer = $c->Level;
+                if ($c->Level > self::$categoryLayer && strpos($c->Alias, '/') !== false) {
+                    self::$categoryLayer = $c->Level;
+                }
             }
-            if(UrlRule::$categorylayer == -1)
-                UrlRule::$categorylayer = 0;
+            if (self::$categoryLayer == -1) {
+                self::$categoryLayer = 0;
+            }
         }
-        switch (UrlRule::$categorylayer) {
+        switch (self::$categoryLayer) {
             case 3:
-                $fullcategory='[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*|[^\./_]+/[^\./_]*/[^\./_]*/[^\./_]*';
+                $fullcategory = '[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*|[^\./_]+/[^\./_]*/[^\./_]*/[^\./_]*';
                 break;
             case 2:
-                $fullcategory='[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*';
+                $fullcategory = '[^\./_]*|[^\./_]*/[^\./_]*|[^\./_]*/[^\./_]*/[^\./_]*';
                 break;
             case 1:
-                $fullcategory='[^\./_]*|[^\./_]*/[^\./_]*';
+                $fullcategory = '[^\./_]*|[^\./_]*/[^\./_]*';
                 break;
             default:
-                $fullcategory='[^\./_]*';
+                $fullcategory = '[^\./_]*';
                 break;
         }
 
@@ -390,7 +428,7 @@ class UrlRule {
             $url = $url . ' ' . $zbp->cookiespath . 'index\.php\?page=$1&rewrite=1';
             $url = str_replace('%poaogoe%', '([0-9]*)', $url);
         }
-        if ($type == 'cate' || $type == 'tags' || $type == 'date' || $type == 'auth') {
+        if ($type == 'cate' || $type == 'tags' || $type == 'date' || $type == 'auth' || $type == 'list') {
             $url = str_replace('%page%', '%poaogoe%', $url);
             preg_match('/(?<=\})[^\{\}]+(?=\{%poaogoe%\})/i', $s, $matches);
             if (isset($matches[0])) {
@@ -401,12 +439,12 @@ class UrlRule {
             $url = str_replace('%id%', '([0-9]+)', $url);
             $url = str_replace('%date%', '([0-9\-]+)', $url);
             if ($type == 'cate') {
-                $url = str_replace('%alias%', '('.$fullcategory.')', $url);
+                $url = str_replace('%alias%', '(' . $fullcategory . ')', $url);
             } else {
                 $url = str_replace('%alias%', '([^\./_]+?)', $url);
             }
         }
-        if ($type == 'page' || $type == 'article') {
+        if ($type == 'page' || $type == 'article' || $type == 'post') {
             if (strpos($url, '%id%') !== false) {
                 $url = $url . '(\?.*)? ' . $zbp->cookiespath . 'index\.php\?id=$1&rewrite=1';
                 $url = str_replace('%id%', '([0-9]+)', $url);
@@ -419,7 +457,7 @@ class UrlRule {
                     $url = str_replace('%alias%', '(?!zb_)(.+)', $url);
                 }
             }
-            $url = str_replace('%category%', '(?:'.$fullcategory.')', $url);
+            $url = str_replace('%category%', '(?:' . $fullcategory . ')', $url);
             $url = str_replace('%author%', '(?:[^\./_]+)', $url);
             $url = str_replace('%year%', '(?:[0-9]<:4:>)', $url);
             $url = str_replace('%month%', '(?:[0-9]<:1,2:>)', $url);
@@ -430,8 +468,6 @@ class UrlRule {
         $url = str_replace('<:', '{', $url);
         $url = str_replace(':>', '}', $url);
 
-        return 'RewriteRule ' . $zbp->cookiespath . $url . ' [I,L]';
-
+        return 'RewriteRule ' . $zbp->cookiespath . $url . '&full_uri=$0 [I,L]';
     }
-
 }

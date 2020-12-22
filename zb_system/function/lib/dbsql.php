@@ -1,44 +1,19 @@
 <?php
-/**
- * 数据库操作接口
- *
- * @package Z-BlogPHP
- * @subpackage Interface/DataBase 类库
- */
-interface iDataBase {
 
-    public function Open($array);
-
-    public function Close();
-
-    public function Query($query);
-
-    public function Insert($query);
-
-    public function Update($query);
-
-    public function Delete($query);
-
-    public function QueryMulti($s);
-
-    public function EscapeString($s);
-
-    public function CreateTable($table, $datainfo);
-
-    public function DelTable($table);
-
-    public function ExistTable($table);
-
+if (!defined('ZBP_PATH')) {
+    exit('Access denied');
 }
+/**
+ * 数据库操作接口.
+ */
 
 /**
- * SQL语句生成类
- * @package Z-BlogPHP
- * @subpackage ClassLib/DataBase
+ * SQL语句生成类.
  */
-class DbSql {
+class DbSql
+{
     /**
-     * @var null 数据库连接实例
+     * @var Database__Interface 数据库连接实例
      */
     private $db = null;
     /**
@@ -50,55 +25,73 @@ class DbSql {
      */
     private $sql = null;
 
-    public function __construct(&$db = null) {
+    public function __construct(&$db = null)
+    {
         $this->db = &$db;
         $this->dbclass = get_class($this->db);
-        $this->sql = 'sql' . $this->db->type;
+        $this->sql = 'sql__' . $this->db->type;
     }
+
     /**
      * 替换数据表前缀
-     * @param string $
+     *
+     * @param string $s
+     *
      * @return string
      */
-    public function ReplacePre(&$s) {
+    public function ReplacePre(&$s)
+    {
         $s = str_replace('%pre%', $this->db->dbpre, $s);
+
         return $s;
     }
 
-    public function get() {
+    /**
+     * @return SQL__Global
+     */
+    public function get()
+    {
         $sql = new $this->sql($this->db);
+
         return $sql;
     }
 
     /**
-     * 删除表,返回SQL语句
+     * 删除表,返回SQL语句.
+     *
      * @param string $table
+     *
      * @return string
      */
-    public function DelTable($table) {
-        
+    public function DelTable($table)
+    {
         return $this->get()->drop("$table")->sql;
     }
 
     /**
-     * 检查表是否存在，返回SQL语句
+     * 检查表是否存在，返回SQL语句.
+     *
      * @param string $table
      * @param string $dbname
+     *
      * @return string
      */
-    public function ExistTable($table, $dbname = '') {
-
+    public function ExistTable($table, $dbname = '')
+    {
         return $this->get()->exist($table, $dbname)->sql;
     }
 
     /**
-     * 创建表，返回构造完整的SQL语句
+     * 创建表，返回构造完整的SQL语句.
+     *
      * @param string $table
-     * @param array $datainfo
+     * @param array  $datainfo
+     * @param null   $engine
+     *
      * @return string
      */
-    public function CreateTable($table, $datainfo, $engine = null) {
-
+    public function CreateTable($table, $datainfo, $engine = null)
+    {
         $sql = $this->get();
         $sql->create($table)->data($datainfo);
         if (!is_null($engine)) {
@@ -106,21 +99,22 @@ class DbSql {
         }
 
         return $sql->sql;
-
     }
 
-
     /**
-     * 构造查询语句
-     * @param string $table
-     * @param string $select
-     * @param string $where
-     * @param string $order
-     * @param string $limit
+     * 构造查询语句.
+     *
+     * @param string     $table
+     * @param string     $select
+     * @param string     $where
+     * @param string     $order
+     * @param string     $limit
      * @param array|null $option
+     *
      * @return string 返回构造的语句
      */
-    public function Select($table, $select = null, $where = null, $order = null, $limit = null, $option = null) {
+    public function Select($table, $select = null, $where = null, $order = null, $limit = null, $option = null)
+    {
         if (!is_array($option)) {
             $option = array();
         }
@@ -134,7 +128,6 @@ class DbSql {
                 } else {
                     $sql->count($value);
                 }
-                
             }
         } else {
             if (!is_array($select)) {
@@ -159,14 +152,17 @@ class DbSql {
     }
 
     /**
-     * 构造计数语句
+     * 构造计数语句.
+     *
      * @param string $table
-     * @param string $count
-     * @param string $where
-     * @param null $option
+     * @param mixed  $count
+     * @param mixed  $where
+     * @param null   $option
+     *
      * @return string 返回构造的语句
      */
-    public function Count($table, $count, $where = null, $option = null) {
+    public function Count($table, $count, $where = null, $option = null)
+    {
         if (!is_array($option)) {
             $option = array('select2count' => true);
         }
@@ -175,46 +171,56 @@ class DbSql {
     }
 
     /**
-     * 构造数据更新语句
-     * @param string $table
-     * @param string $keyvalue
-     * @param string $where
+     * 构造数据更新语句.
+     *
+     * @param string     $table
+     * @param mixed      $keyvalue
+     * @param mixed      $where
      * @param array|null $option
+     *
      * @return string 返回构造的语句
      */
-    public function Update($table, $keyvalue, $where, $option = null) {
+    public function Update($table, $keyvalue, $where, $option = null)
+    {
         return $this->get()->update($table)->data($keyvalue)->where($where)->option($option)->sql;
     }
 
     /**
-     * 构造数据插入语句
+     * 构造数据插入语句.
+     *
      * @param string $table
-     * @param string $keyvalue
+     * @param mixed  $keyvalue
+     *
      * @return string 返回构造的语句
      */
-    public function Insert($table, $keyvalue) {
-
-        return $this->get()->insert($this->db)->insert($table)->data($keyvalue)->sql;
+    public function Insert($table, $keyvalue)
+    {
+        return $this->get()->insert($table)->data($keyvalue)->sql;
     }
 
     /**
-     * 构造数据删除语句
-     * @param string $table
-     * @param string $where
+     * 构造数据删除语句.
+     *
+     * @param string     $table
+     * @param mixed      $where
      * @param array|null $option
+     *
      * @return string 返回构造的语句
      */
-    public function Delete($table, $where, $option = null) {
-
-        return $this->get()->delete($this->db)->delete($table)->where($where)->option($option)->sql;
+    public function Delete($table, $where, $option = null)
+    {
+        return $this->get()->delete($table)->where($where)->option($option)->sql;
     }
 
     /**
-     * 返回经过过滤的SQL语句
+     * 返回经过过滤的SQL语句.
+     *
      * @param $sql
+     *
      * @return mixed
      */
-    public function Filter($sql) {
+    public function Filter($sql)
+    {
         $_SERVER['_query_count'] = $_SERVER['_query_count'] + 1;
 
         foreach ($GLOBALS['hooks']['Filter_Plugin_DbSql_Filter'] as $fpname => &$fpsignal) {
@@ -226,38 +232,41 @@ class DbSql {
 
     /**
      * 导出sql生成语句，用于备份数据用。
+     *
      * @param $type 数据连接类型
+     *
      * @return mixed
      */
     private $_explort_db = null;
-    public function Export($table, $keyvalue, $type = 'mysql') {
 
+    public function Export($table, $keyvalue, $type = 'mysql')
+    {
         if ($type == 'mysql' && $this->_explort_db === null) {
-            $this->_explort_db = new DbMySQL;
+            $this->_explort_db = new Database_MySQL();
         }
 
         if ($type == 'mysqli' && $this->_explort_db === null) {
-            $this->_explort_db = new DbMySQLi;
+            $this->_explort_db = new Database_MySQLi();
         }
 
         if ($type == 'pdo_mysql' && $this->_explort_db === null) {
-            $this->_explort_db = new Dbpdo_MySQL;
+            $this->_explort_db = new Database_PDOMySQL();
         }
 
         if ($type == 'sqlite' && $this->_explort_db === null) {
-            $this->_explort_db = new DbSQLite;
+            $this->_explort_db = new Database_SQLite();
         }
 
         if ($type == 'sqlite3' && $this->_explort_db === null) {
-            $this->_explort_db = new DbSQLite3;
+            $this->_explort_db = new Database_SQLite();
         }
 
         if ($type == 'pdo_sqlite' && $this->_explort_db === null) {
-            $this->_explort_db = new Dbpdo_SQLite;
+            $this->_explort_db = new Database_SQLite3();
         }
 
         if ($this->_explort_db === null) {
-            $this->_explort_db = new DbMySQL;
+            $this->_explort_db = new Database_MySQL();
         }
 
         $sql = "INSERT INTO $table ";
@@ -287,5 +296,14 @@ class DbSql {
         $sql .= ')';
 
         return $sql . ";\r\n";
+    }
+
+    //command = 'begin','commit','rollback'
+    public function Transaction($command)
+    {
+        $command = strtoupper(trim($command));
+        if ($command == 'BEGIN' || $command == 'COMMIT' || $command == 'ROLLBACK') {
+            return $command;
+        }
     }
 }

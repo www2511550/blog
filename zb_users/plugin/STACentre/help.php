@@ -6,9 +6,15 @@ require '../../../zb_system/function/c_system_admin.php';
 $zbp->Load();
 
 $action = 'root';
-if (!$zbp->CheckRights($action)) {$zbp->ShowError(6);die();}
+if (!$zbp->CheckRights($action)) {
+    $zbp->ShowError(6);
+    die();
+}
 
-if (!$zbp->CheckPlugin('STACentre')) {$zbp->ShowError(68);die();}
+if (!$zbp->CheckPlugin('STACentre')) {
+    $zbp->ShowError(68);
+    die();
+}
 
 $blogtitle = '静态管理中心';
 
@@ -23,7 +29,7 @@ require $blogpath . 'zb_system/admin/admin_top.php';
 <div id="divMain">
 
   <div class="divHeader">
-    <?php echo $blogtitle;?></div>
+    <?php echo $blogtitle; ?></div>
   <div class="SubMenu">
     <a href="main.php">
       <span class="m-left">配置页面</span>
@@ -75,7 +81,7 @@ require $blogpath . 'zb_system/admin/admin_top.php';
     </table>
 
     <script type="text/javascript">ActiveLeftMenu("aPluginMng");</script>
-    <script type="text/javascript">AddHeaderIcon("<?php echo $bloghost . 'zb_users/plugin/STACentre/logo.png';?>");</script>
+    <script type="text/javascript">AddHeaderIcon("<?php echo $bloghost . 'zb_users/plugin/STACentre/logo.png'; ?>");</script>
   </div>
 </div>
 

@@ -10,7 +10,6 @@
 		</div>
 		<div id="divNavBar">
 <ul>
-
 {module:navbar}
 </ul>
 		</div>

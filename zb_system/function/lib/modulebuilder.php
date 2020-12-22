@@ -1,68 +1,78 @@
 <?php
+
+if (!defined('ZBP_PATH')) {
+    exit('Access denied');
+}
 /**
- * 模块创建类
- *
- * @package Z-BlogPHP
- * @subpackage ClassLib 类库
+ * 模块创建类.
  */
-class ModuleBuilder {
-
-    public static $List = array();//array('filename'=>,'function' => '', 'paramters' => '');
+class ModuleBuilder
+{
     //需要重建的module list
-    private static $Ready = array();//'filename';
+    private static $Ready = array(); //'filename';
 
-    public static function Build() {
+    public static $List = array(); //array('filename'=>,'function' => '', 'paramters' => '');
+
+    public static function Build()
+    {
         global $zbp;
-        foreach (ModuleBuilder::$Ready as $m) {
+        foreach (self::$Ready as $m) {
             if (isset($zbp->modulesbyfilename[$m])) {
-                $m = $zbp->modulesbyfilename[$m];
-                $m->Build();
-                $m->Save();
+                $zbp->modulesbyfilename[$m]->Build();
+                $zbp->modulesbyfilename[$m]->Save();
             }
         }
     }
 
     /**
-     * 重建模块
+     * 将模块注册进Ready重建列表.
+     *
      * @param string $modfilename 模块名
-     * @param string $userfunc 用户函数
+     * @param string $userfunc    用户函数
      */
-    public static function Reg($modfilename, $userfunc) {
-        ModuleBuilder::$List[$modfilename]['filename'] = $modfilename;
-        if(function_exists($userfunc)){
-            ModuleBuilder::$List[$modfilename]['function'] = $userfunc;
-        } elseif (strpos($userfunc, '::') !== false) {
-            $a = explode('::', $userfunc);
-            if(method_exists($a[0], $a[1])){
-                ModuleBuilder::$List[$modfilename]['function'] = $userfunc;
-            }
-        }
+    public static function Reg($modfilename, $userfunc)
+    {
+        self::$List[$modfilename]['filename'] = $modfilename;
+        self::$List[$modfilename]['function'] = $userfunc;
+        self::$List[$modfilename]['parameters'] = array();
     }
 
     /**
-     * 添加模块
+     * 添加进Ready List模块.
+     *
      * @param string $modfilename 模块名
-     * @param null $parameters 模块参数
+     * @param null   $parameters  模块参数
      */
-    public static function Add($modfilename, $parameters = null) {
-        ModuleBuilder::$Ready[$modfilename] = $modfilename;
-        ModuleBuilder::$List[$modfilename]['parameters'] = $parameters;
+    public static function Add($modfilename, $parameters = null)
+    {
+        self::$Ready[$modfilename] = $modfilename;
+        $p = func_get_args();
+        array_shift($p);
+        $p = is_array($p) ? $p : array();
+        self::$List[$modfilename]['parameters'] = $p;
     }
 
     /**
-     * 删除模块
+     * 删除进Ready List模块.
+     *
      * @param string $modfilename 模块名
      */
-    public static function Del($modfilename) {
-        unset(ModuleBuilder::$Ready[$modfilename]);
+    public static function Del($modfilename)
+    {
+        unset(self::$Ready[$modfilename]);
     }
 
     /**
-     * 导出网站分类模块数据
+     * 导出网站分类模块数据.
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
+     *
      * @todo 必须重写
      */
-    public static function Catalog() {
+    public static function Catalog()
+    {
         global $zbp;
 
         $template = $zbp->template;
@@ -79,11 +89,16 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出日历模块数据
+     * 导出日历模块数据.
+     *
      * @param string $date 日期
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function Calendar($date = '') {
+    public static function Calendar($date = '')
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
@@ -145,9 +160,9 @@ class ModuleBuilder {
                 $url->Rules['{%month%}'] = $tags['nowMonth'];
                 $url->Rules['{%day%}'] = $key;
                 $arraydate[$key] = array(
-                    'Date' => $fullDate,
-                    'Url' => $url->Make(),
-                    'Count' => 0
+                    'Date'  => $fullDate,
+                    'Url'   => $url->Make(),
+                    'Count' => 0,
                 );
             }
             $arraydate[$key]['Count']++;
@@ -157,14 +172,17 @@ class ModuleBuilder {
         $ret = $template->Output('module-calendar');
 
         return $ret;
-
     }
 
     /**
-     * 导出最新留言模块数据
+     * 导出最新留言模块数据.
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function Comments() {
+    public static function Comments()
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
@@ -184,10 +202,14 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出最近发表文章模块数据
+     * 导出最近发表文章模块数据.
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function LatestArticles() {
+    public static function LatestArticles()
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
@@ -207,14 +229,18 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出文章归档模块数据
+     * 导出文章归档模块数据.
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function Archives() {
+    public static function Archives()
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
-        $urls = array();//array(url,name,count);
+        $urls = array(); //array(url,name,count);
 
         $maxli = $zbp->modulesbyfilename['archives']->MaxLi;
         if ($maxli < 0) {
@@ -257,7 +283,6 @@ class ModuleBuilder {
             if ($value - strtotime($fdate[0] . '-' . $fdate[1]) < 0) {
                 unset($arraydate[$key]);
             }
-
         }
 
         $arraydate = array_reverse($arraydate);
@@ -281,7 +306,7 @@ class ModuleBuilder {
             $n = GetValueInArrayByCurrent($zbp->db->Query($sql), 'num');
             if ($n > 0) {
                 //$urls[]=array($url->Make(),str_replace(array('%y%', '%m%'), array(date('Y', $fdate), date('n', $fdate)), $zbp->lang['msg']['year_month']),$n);
-                $meta = new Metas;
+                $meta = new Metas();
                 $meta->Url = $url->Make();
                 $meta->Name = str_replace(array('%y%', '%m%'), array(date('Y', $fdate), date('n', $fdate)), $zbp->lang['msg']['year_month']);
                 $meta->Count = $n;
@@ -291,7 +316,7 @@ class ModuleBuilder {
         }
 
         $tags['urls'] = $urls;
-
+        $tags['style'] = $zbp->option['ZC_MODULE_ARCHIVES_STYLE'];
         $template->SetTagsAll($tags);
         $ret = $template->Output('module-archives');
 
@@ -299,10 +324,14 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出导航模块数据
+     * 导出导航模块数据.
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function Navbar() {
+    public static function Navbar()
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
@@ -315,9 +344,7 @@ class ModuleBuilder {
         $b = $a[1];
         $c = $a[2];
         foreach ($b as $key => $value) {
-
             if ($b[$key] == 'page') {
-
                 $type = 'page';
                 $id = $c[$key];
                 $o = $zbp->GetPostByID($id);
@@ -326,10 +353,8 @@ class ModuleBuilder {
 
                 $a = '<li id="navbar-' . $type . '-' . $id . '"><a href="' . $url . '">' . $name . '</a></li>';
                 $s = preg_replace('/<li id="navbar-' . $type . '-' . $id . '">.*?<\/a><\/li>/', $a, $s);
-
             }
             if ($b[$key] == 'category') {
-
                 $type = 'category';
                 $id = $c[$key];
                 $o = $zbp->GetCategoryByID($id);
@@ -338,10 +363,8 @@ class ModuleBuilder {
 
                 $a = '<li id="navbar-' . $type . '-' . $id . '"><a href="' . $url . '">' . $name . '</a></li>';
                 $s = preg_replace('/<li id="navbar-' . $type . '-' . $id . '">.*?<\/a><\/li>/', $a, $s);
-
             }
             if ($b[$key] == 'tag') {
-
                 $type = 'tag';
                 $id = $c[$key];
                 $o = $zbp->GetTagByID($id);
@@ -350,7 +373,6 @@ class ModuleBuilder {
 
                 $a = '<li id="navbar-' . $type . '-' . $id . '"><a href="' . $url . '">' . $name . '</a></li>';
                 $s = preg_replace('/<li id="navbar-' . $type . '-' . $id . '">.*?<\/a><\/li>/', $a, $s);
-
             }
         }
 
@@ -363,14 +385,18 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出tags模块数据
+     * 导出tags模块数据.
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function TagList() {
+    public static function TagList()
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
-        $urls = array();//array(real tag);
+        $urls = array(); //array(real tag);
 
         $i = $zbp->modulesbyfilename['tags']->MaxLi;
         if ($i == 0) {
@@ -397,16 +423,21 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出用户列表模块数据
+     * 导出用户列表模块数据.
+     *
      * @param int $level 要导出的用户最低等级，默认为4（即协作者）
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function Authors() {
+    public static function Authors($level = 4)
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
         $authors = array();
-        $level = $zbp->actions['ArticleEdt'];
+        $level = $level || $zbp->actions['ArticleEdt'];
 
         $w = array();
         $w[] = array('<=', 'mem_Level', $level);
@@ -432,11 +463,16 @@ class ModuleBuilder {
     }
 
     /**
-     * 导出网站统计模块数据
+     * 导出网站统计模块数据.
+     *
      * @param array $array
+     *
+     * @throws Exception
+     *
      * @return string 模块内容
      */
-    public static function Statistics($array = array()) {
+    public static function Statistics($array = array())
+    {
         global $zbp;
         $template = $zbp->template;
         $tags = array();
@@ -488,12 +524,10 @@ class ModuleBuilder {
 
         $zbp->modulesbyfilename['statistics']->Type = "ul";
 
-
         $tags['allinfo'] = $allinfo;
         $template->SetTagsAll($tags);
         $ret = $template->Output('module-statistics');
 
         return $ret;
     }
-
 }
